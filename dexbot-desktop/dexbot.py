@@ -4,6 +4,11 @@ import os
 import random
 import re
 import unicodedata
+import ipaddress
+import socket
+import urllib.parse
+import urllib.request
+from html.parser import HTMLParser
 from collections import Counter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +16,42 @@ DATA_FILE = os.path.join(BASE_DIR, "dexbot_dados.json")
 MODEL_FILE = os.path.join(BASE_DIR, "dexbot_modelo.json")
 BASE_CONHECIMENTO = os.path.join(BASE_DIR, "dexbot_conhecimento.json")
 EXTENSOES_TEXTO = {".txt", ".md", ".py", ".html", ".css", ".js", ".json", ".csv", ".xml", ".yml", ".yaml", ".ini", ".log"}
+
+class ExtratorTexto(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.partes = []
+        self.ignorar = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "noscript", "svg"}:
+            self.ignorar += 1
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style", "noscript", "svg"} and self.ignorar:
+            self.ignorar -= 1
+
+    def handle_data(self, data):
+        if not self.ignorar:
+            texto = data.strip()
+            if texto:
+                self.partes.append(texto)
+
+def endereco_publico(url):
+    try:
+        partes = urllib.parse.urlparse(url)
+        if partes.scheme != "https" or not partes.hostname:
+            return False
+        host = partes.hostname
+        if host in {"localhost"} or host.endswith(".local"):
+            return False
+        for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM):
+            ip = ipaddress.ip_address(info[4][0])
+            if not ip.is_global:
+                return False
+        return True
+    except Exception:
+        return False
 
 EXEMPLOS_INICIAIS = [
     ["oi", "Olá! Eu sou a Dexbot. Como posso ajudar?"],
@@ -226,6 +267,110 @@ class Dexbot:
         print("Dexbot: Estudei", len(documentos), "trechos de", len(set(d["arquivo"] for d in documentos)), "arquivos.")
         print("Dexbot: O conteúdo foi salvo localmente para consultas futuras.")
 
+    def barra_progresso(self, bytes_total, etapa):
+        kb = bytes_total / 1024
+        blocos = min(30, int(kb / 10))
+        barra = "#" * blocos + "-" * (30 - blocos)
+        print("\\r[" + barra + "] " + format(kb, ".1f") + " KB aprendidos | " + etapa[:35].ljust(35), end="", flush=True)
+
+    def pesquisar_web(self, consulta):
+        consulta = consulta.strip()
+        if not consulta:
+            return 0
+        url_busca = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": consulta})
+        pedido = urllib.request.Request(url_busca, headers={"User-Agent": "DexbotLocal/1.0"})
+        try:
+            with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                html_busca = resposta.read(700000).decode("utf-8", errors="ignore")
+        except Exception as erro:
+            print("\\nDexbot: Não consegui acessar a pesquisa:", erro)
+            return 0
+
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+            def handle_starttag(self, tag, attrs):
+                if tag == "a":
+                    dados = dict(attrs)
+                    classe = dados.get("class", "")
+                    href = dados.get("href", "")
+                    if "result__a" in classe and href:
+                        partes = urllib.parse.urlparse(href)
+                        destino = urllib.parse.parse_qs(partes.query).get("uddg", [href])[0]
+                        destino = urllib.parse.unquote(destino)
+                        if destino.startswith("https://"):
+                            self.links.append(destino)
+
+        parser_links = Links()
+        parser_links.feed(html_busca)
+        links = list(dict.fromkeys(parser_links.links))[:5]
+        if not links:
+            print("\\nDexbot: Nenhum resultado seguro foi encontrado.")
+            return 0
+
+        aprendidos = []
+        total = 0
+        for indice, link in enumerate(links, 1):
+            if not endereco_publico(link):
+                continue
+            try:
+                pedido = urllib.request.Request(link, headers={"User-Agent": "DexbotLocal/1.0"})
+                with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                    tipo = resposta.headers.get("Content-Type", "").lower()
+                    if "text/html" not in tipo and "text/plain" not in tipo:
+                        continue
+                    bruto = resposta.read(512000)
+                total += len(bruto)
+                if "text/html" in tipo:
+                    extrator = ExtratorTexto()
+                    extrator.feed(bruto.decode("utf-8", errors="ignore"))
+                    texto = " ".join(extrator.partes)
+                else:
+                    texto = bruto.decode("utf-8", errors="ignore")
+                texto = re.sub(r"\\s+", " ", texto).strip()
+                if len(texto) < 100:
+                    continue
+                for inicio in range(0, min(len(texto), 9000), 1200):
+                    trecho = texto[inicio:inicio + 1200].strip()
+                    if len(trecho) >= 100:
+                        aprendidos.append({"arquivo": link, "trecho": trecho})
+                self.barra_progresso(total, "Página " + str(indice) + "/5")
+            except Exception:
+                continue
+
+        if aprendidos:
+            antigos = []
+            if os.path.exists(BASE_CONHECIMENTO):
+                try:
+                    with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
+                        antigos = json.load(arquivo)
+                except (OSError, json.JSONDecodeError):
+                    antigos = []
+            antigos.extend(aprendidos)
+            with open(BASE_CONHECIMENTO, "w", encoding="utf-8") as arquivo:
+                json.dump(antigos, arquivo, ensure_ascii=False, indent=2)
+        print()
+        print("Dexbot: Pesquisa concluída. Trechos guardados:", len(aprendidos))
+        return total
+
+    def modo_treinamento_web(self):
+        print("\\nMODO DE TREINAMENTO PELA INTERNET")
+        print("Digite um assunto para pesquisar. Digite PARAR para encerrar.")
+        total = 0
+        while True:
+            try:
+                assunto = input("\\nO que devo pesquisar? ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if assunto.lower() in {"parar", "/parar", "sair", "/sair"}:
+                break
+            if assunto:
+                total += self.pesquisar_web(assunto)
+                self.barra_progresso(total, "Total acumulado")
+                print()
+        print("Dexbot: Modo de pesquisa encerrado. Total recebido:", format(total / 1024, ".1f"), "KB.")
+
     def buscar_conhecimento(self, pergunta):
         if not os.path.exists(BASE_CONHECIMENTO):
             return None
@@ -317,6 +462,7 @@ class Dexbot:
                 print("/treinar  - treinar novamente a rede neural")
                 print("/memoria  - mostrar quantidade de exemplos")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
+                print("/treinarweb - pesquisar sites continuamente e guardar conhecimento")
                 print("/sair     - fechar a Dexbot\n")
             elif comando == "/ensinar":
                 self.ensinar()
@@ -326,6 +472,8 @@ class Dexbot:
                 print("Dexbot: Tenho", len(self.exemplos), "exemplos de treinamento.")
             elif comando == "/pesquisar":
                 self.pesquisar_pasta()
+            elif comando == "/treinarweb":
+                self.modo_treinamento_web()
             else:
                 print("Dexbot:", self.responder(mensagem))
 
