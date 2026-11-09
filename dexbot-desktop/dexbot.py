@@ -462,7 +462,22 @@ class Dexbot:
             "gramática da língua portuguesa",
             "memória (aprendizagem)",
             "ciência da computação",
-            "internet"
+            "internet",
+            "vocabulário da língua portuguesa",
+            "sinônimos e antônimos",
+            "significado das palavras",
+            "ortografia da língua portuguesa",
+            "verbos da língua portuguesa",
+            "conjugação verbal português",
+            "pontuação e acentuação",
+            "interpretação de texto",
+            "matemática básica",
+            "operações matemáticas básicas",
+            "ciências naturais",
+            "geografia do Brasil",
+            "história do Brasil",
+            "segurança na internet",
+            "programação para iniciantes"
         ]
         print("\nDEXBOT: Iniciando estudo automático na Wikipédia em português.")
         print("Vou pesquisar artigos, guardar trechos no PC e mostrar os KB recebidos.")
@@ -598,15 +613,41 @@ class Dexbot:
 
         entrada = vetorizar(pergunta, self.vocabulario)
         if not any(entrada):
-            return "Ainda não entendi essa frase. Você pode me ensinar com /ensinar ou pesquisar com /treinarweb."
+            print("Dexbot: Ainda não conheço esse assunto. Vou pesquisar na internet...")
+            self.pesquisar_automatico(pergunta)
+            conhecimento_novo = self.buscar_conhecimento(pergunta)
+            if conhecimento_novo:
+                return conhecimento_novo
+            return "Não encontrei uma fonte confiável agora. Tente novamente ou me ensine com /ensinar."
 
         probabilidades, _ = self.rede.prever(entrada)
         melhor = max(range(len(probabilidades)), key=probabilidades.__getitem__)
         confianca = probabilidades[melhor]
 
         if confianca < 0.55:
-            return "Ainda não aprendi o significado dessa frase. Tente explicar com /ensinar."
+            print("Dexbot: Não tenho certeza. Vou pesquisar para tentar responder...")
+            self.pesquisar_automatico(pergunta)
+            conhecimento_novo = self.buscar_conhecimento(pergunta)
+            if conhecimento_novo:
+                return conhecimento_novo
+            return "Pesquisei, mas não encontrei informação suficiente. Você pode me ensinar com /ensinar."
         return self.respostas[melhor]
+
+    def pesquisar_automatico(self, pergunta):
+        """Pesquisa quando a resposta não é conhecida e salva os resultados na memória local."""
+        try:
+            total = self.pesquisar_web(pergunta)
+            if total <= 0:
+                estado = [0]
+                total = self.pesquisar_wikipedia(pergunta, estado)
+            if total > 0:
+                print("Dexbot: Encontrei conteúdo. Ele foi guardado na memória local.")
+            else:
+                print("Dexbot: Não consegui obter conteúdo desta vez.")
+            return total
+        except Exception as erro:
+            print("Dexbot: A pesquisa automática falhou:", erro)
+            return 0
 
     def ensinar(self):
         pergunta = input("Nova pergunta: ").strip()
