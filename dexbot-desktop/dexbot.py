@@ -639,9 +639,9 @@ class Dexbot:
         corpo = {
             "model": OLLAMA_MODEL,
             "messages": mensagens,
-            "stream": False,
+            "stream": True,
             "keep_alive": "30m",
-            "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 512, "num_thread": 2}
+            "options": {"temperature": 0.2, "num_ctx": 3072, "num_predict": 384, "num_thread": 2}
         }
         pedido = urllib.request.Request(
             OLLAMA_CHAT_URL,
@@ -650,24 +650,36 @@ class Dexbot:
             method="POST"
         )
         try:
+            partes = []
             with urllib.request.urlopen(pedido, timeout=180) as resposta:
-                dados = json.loads(resposta.read(2_000_000).decode("utf-8"))
-            texto = dados.get("message", {}).get("content", "").strip()
+                for linha in resposta:
+                    if not linha.strip():
+                        continue
+                    evento = json.loads(linha.decode("utf-8"))
+                    trecho = evento.get("message", {}).get("content", "")
+                    if trecho:
+                        print(trecho, end="", flush=True)
+                        partes.append(trecho)
+            texto = "".join(partes).strip()
             if not texto:
-                return "Não consegui montar uma resposta agora. Pode tentar novamente?"
+                print("Não consegui montar uma resposta agora. Pode tentar novamente?")
+                return ""
             self.historico.append({"role": "user", "content": pergunta})
             self.historico.append({"role": "assistant", "content": texto})
-            self.historico = self.historico[-8:]
+            self.historico = self.historico[-6:]
             self.salvar_historico()
             return texto
         except urllib.error.URLError:
-            return (
+            aviso = (
                 "Não consegui conectar ao Ollama. Abra o Ollama no Windows e "
                 "confirme que o modelo " + OLLAMA_MODEL + " foi instalado. "
                 "Depois tente novamente."
             )
+            print(aviso)
+            return ""
         except Exception as erro:
-            return "Tive um erro ao conversar com o modelo local: " + str(erro)
+            print("Tive um erro ao conversar com o modelo local:", erro)
+            return ""
 
     def ensinar(self):
         pergunta = input("Nova pergunta: ").strip()
@@ -732,7 +744,9 @@ class Dexbot:
             elif comando == "/wiki":
                 self.modo_treinamento_wiki()
             else:
-                print("Dexbot:", self.responder(mensagem))
+                print("Dexbot: ", end="", flush=True)
+                self.responder(mensagem)
+                print()
 
 if __name__ == "__main__":
     Dexbot().iniciar()
