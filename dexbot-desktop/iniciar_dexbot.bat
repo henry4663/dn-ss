@@ -1,32 +1,15 @@
 @echo off
-setlocal
-title Dexbot - IA propria
-cd /d "%~dp0"
+setlocal EnableExtensions
+title Dexbot - Iniciar
+if not exist "%USERPROFILE%\Dexbot" mkdir "%USERPROFILE%\Dexbot"
+cd /d "%USERPROFILE%\Dexbot"
 
-where py >nul 2>nul
+echo Baixando o inicializador atualizado...
+curl.exe -fL --retry 2 "https://raw.githubusercontent.com/henry4663/dn-ss/main/dexbot-desktop/instalar_ia_local.bat" -o "instalar_ia_local.bat"
 if errorlevel 1 (
-    echo Python nao foi encontrado.
-    echo Instale Python 3 pelo site python.org e marque Add Python to PATH.
+    echo ERRO: nao consegui baixar o inicializador.
     pause
     exit /b 1
 )
 
-if not exist "dexbot.py" (
-    echo Baixando o nucleo da Dexbot do GitHub...
-    curl.exe -L "https://raw.githubusercontent.com/henry4663/dn-ss/main/dexbot-desktop/dexbot.py" -o "dexbot.py"
-)
-
-if not exist "dexbot.py" (
-    echo Nao consegui baixar dexbot.py. Verifique sua internet.
-    pause
-    exit /b 1
-)
-
-echo Iniciando Dexbot...
-py -3 dexbot.py
-if errorlevel 1 (
-    echo.
-    echo A Dexbot encontrou um erro. Confira se Python 3 esta instalado.
-    pause
-)
-endlocal
+call "%USERPROFILE%\Dexbot\instalar_ia_local.bat"
