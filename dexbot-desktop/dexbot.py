@@ -8,6 +8,7 @@ import ipaddress
 import socket
 import urllib.parse
 import urllib.request
+import urllib.error
 from html.parser import HTMLParser
 from collections import Counter
 
@@ -282,9 +283,14 @@ class Dexbot:
         try:
             with urllib.request.urlopen(pedido, timeout=15) as resposta:
                 html_busca = resposta.read(700000).decode("utf-8", errors="ignore")
+        except urllib.error.HTTPError as erro:
+            print("\nDexbot: O buscador respondeu HTTP", erro.code, ". Tentando a Wikipédia.")
+            estado = [0]
+            return self.pesquisar_wikipedia(consulta, estado)
         except Exception as erro:
-            print("\nDexbot: Não consegui acessar a pesquisa:", erro)
-            return 0
+            print("\nDexbot: Falha de conexão:", erro, ". Tentando a Wikipédia.")
+            estado = [0]
+            return self.pesquisar_wikipedia(consulta, estado)
 
         class Links(HTMLParser):
             def __init__(self):
@@ -472,7 +478,14 @@ class Dexbot:
         ignorar = {
             "que", "qual", "quais", "como", "para", "com", "uma", "sobre",
             "isso", "esse", "essa", "dos", "das", "por", "pelo", "pela",
-            "nos", "nas", "tem", "ser", "foi", "sao", "the", "and"
+            "nos", "nas", "tem", "ser", "foi", "sao", "the", "and",
+            "quanto", "quanta", "quantos", "quantas", "porque", "porquê",
+            "onde", "quando", "entao", "tambem", "mais", "menos", "muito",
+            "muita", "muitos", "muitas", "voce", "voces", "ele", "ela",
+            "eles", "elas", "meu", "minha", "seu", "sua", "estao", "esta",
+            "estar", "seria", "pode", "podem", "fazer", "faz", "era",
+            "aos", "de", "do", "da", "em", "no", "na", "um", "uns",
+            "as", "os", "e", "ou", "a", "o"
         }
         palavras = normalizar(texto).split()
         resultado = []
@@ -500,39 +513,49 @@ class Dexbot:
         except (OSError, json.JSONDecodeError):
             return None
 
-        consulta = self.palavras_chave(pergunta)
-        if not consulta:
+        consulta = set(self.palavras_chave(pergunta))
+        # Perguntas vagas como "e quanto?" não devem puxar um artigo aleatório.
+        if len(consulta) < 2:
             return None
-        contagem_consulta = Counter(consulta)
+
         melhor = None
-        maior_pontuacao = 0.0
+        melhor_pontuacao = 0.0
+        melhor_frase = ""
 
         for doc in documentos:
             texto = doc.get("trecho", "")
-            palavras_doc = self.palavras_chave(texto)
+            palavras_doc = set(self.palavras_chave(texto))
             if not palavras_doc:
                 continue
-            contagem_doc = Counter(palavras_doc)
-            correspondencias = sum(
-                min(qtd, contagem_doc.get(palavra, 0))
-                for palavra, qtd in contagem_consulta.items()
-            )
-            cobertura = correspondencias / max(1, len(contagem_consulta))
-            densidade = correspondencias / max(1, len(palavras_doc) ** 0.5)
-            frase = normalizar(pergunta)
-            texto_normalizado = normalizar(texto)
-            bonus_frase = 1.5 if len(frase) > 8 and frase in texto_normalizado else 0
-            pontuacao = cobertura + densidade * 0.25 + bonus_frase
-            if pontuacao > maior_pontuacao:
-                maior_pontuacao = pontuacao
-                melhor = doc
 
-        if melhor and maior_pontuacao >= 0.45:
-            trecho = melhor.get("trecho", "")
-            if len(trecho) > 1100:
-                trecho = trecho[:1100] + "..."
+            intersecao = consulta & palavras_doc
+            cobertura = len(intersecao) / len(consulta)
+            if cobertura < 0.35:
+                continue
+
+            frases = re.split(r"(?<=[.!?])\s+", texto)
+            frases_boas = []
+            for frase in frases:
+                termos = set(self.palavras_chave(frase))
+                pontos = len(consulta & termos)
+                if pontos:
+                    frases_boas.append((pontos / max(1, len(termos) ** 0.5), frase.strip()))
+
+            if not frases_boas:
+                continue
+            frases_boas.sort(key=lambda item: item[0], reverse=True)
+            pontuacao = cobertura + frases_boas[0][0] * 0.2
+            if pontuacao > melhor_pontuacao:
+                melhor_pontuacao = pontuacao
+                melhor = doc
+                melhor_frase = " ".join(frase for _, frase in frases_boas[:4])
+
+        if melhor and melhor_pontuacao >= 0.45:
             origem = melhor.get("titulo") or melhor.get("arquivo", "base local")
-            return "Pelo que estudei sobre isso (" + origem + "):\n" + trecho
+            resposta = melhor_frase[:1000].strip()
+            if resposta and resposta[-1] not in ".!?":
+                resposta += "..."
+            return "Encontrei informações relacionadas em " + origem + ":\n" + resposta
         return None
 
     def interpretar_exemplo(self, pergunta):
