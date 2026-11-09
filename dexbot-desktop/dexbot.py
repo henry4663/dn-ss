@@ -271,7 +271,7 @@ class Dexbot:
         kb = bytes_total / 1024
         blocos = min(30, int(kb / 10))
         barra = "#" * blocos + "-" * (30 - blocos)
-        print("\\r[" + barra + "] " + format(kb, ".1f") + " KB aprendidos | " + etapa[:35].ljust(35), end="", flush=True)
+        print("\r[" + barra + "] " + format(kb, ".1f") + " KB aprendidos | " + etapa[:35].ljust(35), end="", flush=True)
 
     def pesquisar_web(self, consulta):
         consulta = consulta.strip()
@@ -283,7 +283,7 @@ class Dexbot:
             with urllib.request.urlopen(pedido, timeout=15) as resposta:
                 html_busca = resposta.read(700000).decode("utf-8", errors="ignore")
         except Exception as erro:
-            print("\\nDexbot: Não consegui acessar a pesquisa:", erro)
+            print("\nDexbot: Não consegui acessar a pesquisa:", erro)
             return 0
 
         class Links(HTMLParser):
@@ -306,7 +306,7 @@ class Dexbot:
         parser_links.feed(html_busca)
         links = list(dict.fromkeys(parser_links.links))[:5]
         if not links:
-            print("\\nDexbot: Nenhum resultado seguro foi encontrado.")
+            print("\nDexbot: Nenhum resultado seguro foi encontrado.")
             return 0
 
         aprendidos = []
@@ -355,12 +355,12 @@ class Dexbot:
         return total
 
     def modo_treinamento_web(self):
-        print("\\nMODO DE TREINAMENTO PELA INTERNET")
+        print("\nMODO DE TREINAMENTO PELA INTERNET")
         print("Digite um assunto para pesquisar. Digite PARAR para encerrar.")
         total = 0
         while True:
             try:
-                assunto = input("\\nO que devo pesquisar? ").strip()
+                assunto = input("\nO que devo pesquisar? ").strip()
             except (EOFError, KeyboardInterrupt):
                 break
             if assunto.lower() in {"parar", "/parar", "sair", "/sair"}:
