@@ -17,7 +17,7 @@ DATA_FILE = os.path.join(BASE_DIR, "dexbot_dados.json")
 MODEL_FILE = os.path.join(BASE_DIR, "dexbot_modelo.json")
 BASE_CONHECIMENTO = os.path.join(BASE_DIR, "dexbot_conhecimento.json")
 HISTORY_FILE = os.path.join(BASE_DIR, "dexbot_conversa.json")
-OLLAMA_MODEL = "qwen2.5:0.5b"
+OLLAMA_MODEL = "qwen2.5-coder:1.5b"
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
 EXTENSOES_TEXTO = {".txt", ".md", ".py", ".html", ".css", ".js", ".json", ".csv", ".xml", ".yml", ".yaml", ".ini", ".log"}
 
@@ -614,12 +614,20 @@ class Dexbot:
         # Recupera um trecho da memória local para dar contexto ao modelo.
         contexto = self.buscar_conhecimento(pergunta)
         sistema = (
-            "Você é Dexbot, uma assistente de IA local. "
-            "Converse naturalmente em português do Brasil, como uma pessoa educada e clara. "
-            "Entenda o contexto das mensagens anteriores, responda diretamente e explique "
-            "com suas próprias palavras. Se não souber, diga que não sabe; nunca invente fatos. "
-            "Faça uma pergunta curta quando a mensagem estiver ambígua. "
-            "Use linguagem simples, sem repetir a pergunta."
+            "Você é Dexbot, uma assistente especializada em programação para a web. "
+            "Sua especialidade principal é HTML, CSS e JavaScript. "
+            "Responda sempre em português do Brasil. "
+            "Quando pedirem código, entregue código funcional, completo e organizado, "
+            "sem remover recursos que o usuário já possui. "
+            "Prefira HTML, CSS e JavaScript puros, sem bibliotecas ou frameworks, "
+            "a menos que o usuário peça. "
+            "Explique brevemente onde colocar cada arquivo e como executar. "
+            "Para projetos com vários arquivos, separe claramente cada arquivo pelo nome. "
+            "Verifique mentalmente sintaxe, nomes de variáveis e funcionamento antes de responder. "
+            "Não invente APIs nem diga que testou um código que não executou. "
+            "Se faltar informação essencial, faça uma pergunta curta. "
+            "Se o pedido for sobre Roblox/Luau, explique que esse não é seu foco principal, "
+            "mas tente ajudar corretamente."
         )
         if contexto:
             sistema += "\n\nTrecho da memória local que pode ajudar (verifique se é relevante):\n" + contexto[:3500]
@@ -632,8 +640,8 @@ class Dexbot:
             "model": OLLAMA_MODEL,
             "messages": mensagens,
             "stream": False,
-            "keep_alive": "2m",
-            "options": {"temperature": 0.5, "num_ctx": 2048, "num_predict": 256}
+            "keep_alive": "30m",
+            "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 512, "num_thread": 2}
         }
         pedido = urllib.request.Request(
             OLLAMA_CHAT_URL,
