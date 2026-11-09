@@ -624,6 +624,9 @@ class Dexbot:
             "Explique brevemente onde colocar cada arquivo e como executar. "
             "Para projetos com vários arquivos, separe claramente cada arquivo pelo nome. "
             "Verifique mentalmente sintaxe, nomes de variáveis e funcionamento antes de responder. "
+        "REGRA OBRIGATÓRIA: nunca entregue código pela metade, nunca use reticências para substituir código e nunca encerre no meio de um arquivo. "
+        "Quando o projeto tiver HTML, CSS e JavaScript, entregue os três arquivos completos, cada um em seu bloco de código. "
+        "Antes de terminar, confira se todos os blocos e estruturas foram fechados. Se o projeto for grande, divida a resposta em partes numeradas e continue do ponto exato, sem apagar código. "
             "Não invente APIs nem diga que testou um código que não executou. "
             "Se faltar informação essencial, faça uma pergunta curta. "
             "Se o pedido for sobre Roblox/Luau, explique que esse não é seu foco principal, "
@@ -641,7 +644,7 @@ class Dexbot:
             "messages": mensagens,
             "stream": True,
             "keep_alive": "30m",
-            "options": {"temperature": 0.2, "num_ctx": 3072, "num_predict": 384, "num_thread": 2}
+            "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 1024, "num_thread": 2}
         }
         pedido = urllib.request.Request(
             OLLAMA_CHAT_URL,
