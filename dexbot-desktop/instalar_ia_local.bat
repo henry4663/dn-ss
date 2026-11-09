@@ -24,6 +24,7 @@ if errorlevel 1 (
 )
 
 set "PYTHON="
+if exist "%LocalAppData%\Programs\Python\Python313\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python313\python.exe"
 for %%V in (313 312 311 310 39) do (
     if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python%%V\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python%%V\python.exe"
 )
@@ -31,10 +32,6 @@ if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python313-32\pyth
 if not defined PYTHON (
     where python.exe >nul 2>nul
     if not errorlevel 1 set "PYTHON=python.exe"
-)
-if not defined PYTHON (
-    where py.exe >nul 2>nul
-    if not errorlevel 1 set "PYTHON=py.exe -3"
 )
 if not defined PYTHON (
     echo ERRO: Python nao foi encontrado.
@@ -96,7 +93,12 @@ echo.
 echo Iniciando Dexbot...
 echo Para sair, digite /sair.
 echo.
-"%PYTHON%" "%~dp0dexbot.py"
+if not exist "%~dp0dexbot.py" (
+    echo ERRO: dexbot.py nao existe em %~dp0
+    pause
+    exit /b 1
+)
+"%PYTHON%" -u "%~dp0dexbot.py"
 set "CODIGO=%errorlevel%"
 echo.
 echo Dexbot encerrou. Codigo: %CODIGO%
