@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 title Dexbot - Inicializador
 cd /d "%~dp0"
 cls
@@ -8,22 +8,33 @@ echo          DEXBOT - INICIALIZADOR
 echo ==========================================
 echo.
 
-if not exist "%~dp0dexbot.py" (
-    echo ERRO: dexbot.py nao esta na mesma pasta deste instalador.
-    echo Baixe os dois arquivos para a pasta %%USERPROFILE%%\Dexbot.
-    echo.
+where curl.exe >nul 2>nul
+if errorlevel 1 (
+    echo ERRO: curl.exe nao foi encontrado no Windows.
+    pause
+    exit /b 1
+)
+
+echo Atualizando o nucleo da Dexbot...
+curl.exe -fL --retry 2 "https://raw.githubusercontent.com/henry4663/dn-ss/main/dexbot-desktop/dexbot.py" -o "%~dp0dexbot.py"
+if errorlevel 1 (
+    echo ERRO: nao consegui baixar dexbot.py.
     pause
     exit /b 1
 )
 
 set "PYTHON="
-if exist "%LocalAppData%\Programs\Python\Python313\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python313\python.exe"
-if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python312\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python312\python.exe"
-if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python311\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python311\python.exe"
-if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python310\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python310\python.exe"
+for %%V in (313 312 311 310 39) do (
+    if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python%%V\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python%%V\python.exe"
+)
+if not defined PYTHON if exist "%LocalAppData%\Programs\Python\Python313-32\python.exe" set "PYTHON=%LocalAppData%\Programs\Python\Python313-32\python.exe"
 if not defined PYTHON (
-    where python >nul 2>nul
-    if not errorlevel 1 set "PYTHON=python"
+    where python.exe >nul 2>nul
+    if not errorlevel 1 set "PYTHON=python.exe"
+)
+if not defined PYTHON (
+    where py.exe >nul 2>nul
+    if not errorlevel 1 set "PYTHON=py.exe -3"
 )
 if not defined PYTHON (
     echo ERRO: Python nao foi encontrado.
@@ -34,36 +45,48 @@ if not defined PYTHON (
 )
 
 set "OLLAMA="
-where ollama >nul 2>nul
-if not errorlevel 1 for /f "delims=" %%I in ('where ollama') do if not defined OLLAMA set "OLLAMA=%%I"
+where ollama.exe >nul 2>nul
+if not errorlevel 1 for /f "delims=" %%I in ('where ollama.exe') do if not defined OLLAMA set "OLLAMA=%%I"
 if not defined OLLAMA if exist "%LocalAppData%\Programs\Ollama\ollama.exe" set "OLLAMA=%LocalAppData%\Programs\Ollama\ollama.exe"
 if not defined OLLAMA if exist "%ProgramFiles%\Ollama\ollama.exe" set "OLLAMA=%ProgramFiles%\Ollama\ollama.exe"
 if not defined OLLAMA (
-    echo ERRO: O instalador do Ollama nao foi localizado neste Windows.
-    echo Se voce acabou de instalar, feche esta janela e abra o CMD novamente.
-    echo Se ainda nao instalou, execute: winget install --id Ollama.Ollama -e
-    echo.
+    echo ERRO: Ollama nao foi encontrado.
+    echo Instale com: winget install --id Ollama.Ollama -e
     pause
     exit /b 1
 )
 
-
-echo Verificando o servico local do Ollama...
-curl.exe -s http://127.0.0.1:11434/api/tags >nul 2>nul
+echo.
+echo Verificando Ollama...
+curl.exe -s --max-time 2 "http://127.0.0.1:11434/api/tags" >nul 2>nul
 if errorlevel 1 (
-    echo Iniciando Ollama...
+    echo Iniciando o servidor Ollama...
     start "Ollama Server" /min "%OLLAMA%" serve
-    timeout /t 5 /nobreak >nul
+)
+
+set "SERVIDOR_OK="
+for /L %%N in (1,1,15) do (
+    if not defined SERVIDOR_OK (
+        curl.exe -s --max-time 2 "http://127.0.0.1:11434/api/tags" >nul 2>nul
+        if not errorlevel 1 set "SERVIDOR_OK=1"
+        if not defined SERVIDOR_OK timeout /t 1 /nobreak >nul
+    )
+)
+if not defined SERVIDOR_OK (
+    echo ERRO: Ollama nao iniciou na porta 11434.
+    echo Abra o aplicativo Ollama e tente novamente.
+    pause
+    exit /b 1
 )
 
 echo.
-echo Conferindo o modelo Qwen 2.5 1.5B...
+echo Conferindo o modelo Qwen Coder...
 "%OLLAMA%" show qwen2.5-coder:1.5b >nul 2>nul
 if errorlevel 1 (
-    echo Baixando o modelo. Aguarde; pode demorar.
+    echo Baixando o modelo. Aguarde...
     "%OLLAMA%" pull qwen2.5-coder:1.5b
     if errorlevel 1 (
-        echo ERRO: nao foi possivel baixar o modelo.
+        echo ERRO: falha ao baixar o modelo Qwen.
         pause
         exit /b 1
     )
@@ -71,9 +94,11 @@ if errorlevel 1 (
 
 echo.
 echo Iniciando Dexbot...
-echo Para sair, digite /sair dentro da Dexbot.
+echo Para sair, digite /sair.
 echo.
 "%PYTHON%" "%~dp0dexbot.py"
+set "CODIGO=%errorlevel%"
 echo.
-echo Dexbot foi encerrada. Codigo de saida: %errorlevel%
+echo Dexbot encerrou. Codigo: %CODIGO%
 pause
+exit /b %CODIGO%
