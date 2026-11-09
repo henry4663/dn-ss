@@ -371,6 +371,102 @@ class Dexbot:
                 print()
         print("Dexbot: Modo de pesquisa encerrado. Total recebido:", format(total / 1024, ".1f"), "KB.")
 
+    def pesquisar_wikipedia(self, assunto, total_estado):
+        parametros = {
+            "action": "query",
+            "list": "search",
+            "srsearch": assunto,
+            "format": "json",
+            "srlimit": 3
+        }
+        url = "https://pt.wikipedia.org/w/api.php?" + urllib.parse.urlencode(parametros)
+        pedido = urllib.request.Request(url, headers={"User-Agent": "Dexbot/1.0 (local learning project)"})
+        try:
+            with urllib.request.urlopen(pedido, timeout=20) as resposta:
+                dados = json.loads(resposta.read(500000).decode("utf-8"))
+        except Exception as erro:
+            print("\\nDexbot: Falha ao pesquisar Wikipedia:", erro)
+            return 0
+
+        paginas = dados.get("query", {}).get("search", [])
+        novos = []
+        bytes_total = 0
+        for pagina in paginas:
+            titulo = pagina.get("title", "")
+            parametros = {
+                "action": "query",
+                "prop": "extracts",
+                "explaintext": 1,
+                "exsectionformat": "plain",
+                "titles": titulo,
+                "format": "json",
+                "redirects": 1
+            }
+            url_pagina = "https://pt.wikipedia.org/w/api.php?" + urllib.parse.urlencode(parametros)
+            try:
+                pedido = urllib.request.Request(url_pagina, headers={"User-Agent": "Dexbot/1.0 (local learning project)"})
+                with urllib.request.urlopen(pedido, timeout=20) as resposta:
+                    bruto = resposta.read(700000)
+                bytes_total += len(bruto)
+                conteudo = json.loads(bruto.decode("utf-8"))
+                for item in conteudo.get("query", {}).get("pages", {}).values():
+                    texto = item.get("extract", "").strip()
+                    if len(texto) < 150:
+                        continue
+                    link = "https://pt.wikipedia.org/wiki/" + urllib.parse.quote(titulo.replace(" ", "_"))
+                    for inicio in range(0, min(len(texto), 18000), 1200):
+                        trecho = texto[inicio:inicio + 1200].strip()
+                        if len(trecho) > 100:
+                            novos.append({"arquivo": link, "trecho": trecho, "titulo": titulo})
+                self.barra_progresso(total_estado[0] + bytes_total, titulo[:35])
+            except Exception:
+                continue
+
+        if novos:
+            self.salvar_conhecimento(novos)
+        total_estado[0] += bytes_total
+        return bytes_total
+
+    def salvar_conhecimento(self, novos):
+        antigos = []
+        if os.path.exists(BASE_CONHECIMENTO):
+            try:
+                with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
+                    antigos = json.load(arquivo)
+            except (OSError, json.JSONDecodeError):
+                antigos = []
+        existentes = {(d.get("arquivo"), d.get("trecho")) for d in antigos}
+        for doc in novos:
+            chave = (doc.get("arquivo"), doc.get("trecho"))
+            if chave not in existentes:
+                antigos.append(doc)
+                existentes.add(chave)
+        with open(BASE_CONHECIMENTO, "w", encoding="utf-8") as arquivo:
+            json.dump(antigos, arquivo, ensure_ascii=False, indent=2)
+
+    def modo_treinamento_wiki(self):
+        assuntos = [
+            "inteligência artificial",
+            "aprendizado de máquina",
+            "processamento de linguagem natural",
+            "redes neurais artificiais",
+            "linguagem humana",
+            "comunicação",
+            "gramática da língua portuguesa",
+            "memória (aprendizagem)",
+            "ciência da computação",
+            "internet"
+        ]
+        print("\\nDEXBOT: Iniciando estudo automático na Wikipédia em português.")
+        print("Vou pesquisar artigos, guardar trechos no PC e mostrar os KB recebidos.")
+        total_estado = [0]
+        for indice, assunto in enumerate(assuntos, 1):
+            print("\\nAssunto", indice, "de", len(assuntos), ":", assunto)
+            self.pesquisar_wikipedia(assunto, total_estado)
+        self.barra_progresso(total_estado[0], "Estudo inicial salvo")
+        print("\\nDexbot: Estudo inicial concluído. Total recebido:", format(total_estado[0] / 1024, ".1f"), "KB.")
+        print("Dexbot: O conhecimento fica em dexbot_conhecimento.json.")
+
     def buscar_conhecimento(self, pergunta):
         if not os.path.exists(BASE_CONHECIMENTO):
             return None
@@ -463,6 +559,7 @@ class Dexbot:
                 print("/memoria  - mostrar quantidade de exemplos")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
                 print("/treinarweb - pesquisar sites continuamente e guardar conhecimento")
+                print("/wiki - estudar novamente a Wikipédia em português")
                 print("/sair     - fechar a Dexbot\n")
             elif comando == "/ensinar":
                 self.ensinar()
@@ -474,6 +571,8 @@ class Dexbot:
                 self.pesquisar_pasta()
             elif comando == "/treinarweb":
                 self.modo_treinamento_web()
+            elif comando == "/wiki":
+                self.modo_treinamento_wiki()
             else:
                 print("Dexbot:", self.responder(mensagem))
 
