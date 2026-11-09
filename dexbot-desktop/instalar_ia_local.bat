@@ -58,10 +58,10 @@ if errorlevel 1 (
 
 echo.
 echo Conferindo o modelo Qwen 2.5 1.5B...
-"%OLLAMA%" show qwen2.5:1.5b >nul 2>nul
+"%OLLAMA%" show qwen2.5:0.5b >nul 2>nul
 if errorlevel 1 (
     echo Baixando o modelo. Aguarde; pode demorar.
-    "%OLLAMA%" pull qwen2.5:1.5b
+    "%OLLAMA%" pull qwen2.5:0.5b
     if errorlevel 1 (
         echo ERRO: nao foi possivel baixar o modelo.
         pause
