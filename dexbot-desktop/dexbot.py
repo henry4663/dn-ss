@@ -644,7 +644,7 @@ class Dexbot:
             "messages": mensagens,
             "stream": True,
             "keep_alive": "30m",
-            "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 1024, "num_thread": 2}
+            "options": {"temperature": 0.2, "num_ctx": 3072, "num_predict": 1024, "num_thread": 4}
         }
         pedido = urllib.request.Request(
             OLLAMA_CHAT_URL,
