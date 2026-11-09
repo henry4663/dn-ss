@@ -3,6 +3,7 @@ import math
 import os
 import random
 import re
+import unicodedata
 from collections import Counter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +35,8 @@ EXEMPLOS_INICIAIS = [
 
 def normalizar(texto):
     texto = texto.lower().strip()
-    texto = texto.replace("ç", "c")
+    texto = unicodedata.normalize("NFD", texto)
+    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
     texto = re.sub(r"[^\w\s]", " ", texto, flags=re.UNICODE)
     return re.sub(r"\s+", " ", texto)
 
