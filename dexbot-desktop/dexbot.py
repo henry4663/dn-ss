@@ -17,7 +17,7 @@ DATA_FILE = os.path.join(BASE_DIR, "dexbot_dados.json")
 MODEL_FILE = os.path.join(BASE_DIR, "dexbot_modelo.json")
 BASE_CONHECIMENTO = os.path.join(BASE_DIR, "dexbot_conhecimento.json")
 HISTORY_FILE = os.path.join(BASE_DIR, "dexbot_conversa.json")
-OLLAMA_MODEL = "qwen2.5:1.5b"
+OLLAMA_MODEL = "qwen2.5:0.5b"
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
 EXTENSOES_TEXTO = {".txt", ".md", ".py", ".html", ".css", ".js", ".json", ".csv", ".xml", ".yml", ".yaml", ".ini", ".log"}
 
@@ -599,7 +599,7 @@ class Dexbot:
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as arquivo:
                 dados = json.load(arquivo)
-            return dados[-20:] if isinstance(dados, list) else []
+            return dados[-8:] if isinstance(dados, list) else []
         except (OSError, json.JSONDecodeError):
             return []
 
@@ -625,15 +625,15 @@ class Dexbot:
             sistema += "\n\nTrecho da memória local que pode ajudar (verifique se é relevante):\n" + contexto[:3500]
 
         mensagens = [{"role": "system", "content": sistema}]
-        mensagens.extend(self.historico[-12:])
+        mensagens.extend(self.historico[-6:])
         mensagens.append({"role": "user", "content": pergunta})
 
         corpo = {
             "model": OLLAMA_MODEL,
             "messages": mensagens,
             "stream": False,
-            "keep_alive": "10m",
-            "options": {"temperature": 0.7, "num_ctx": 4096}
+            "keep_alive": "2m",
+            "options": {"temperature": 0.5, "num_ctx": 2048, "num_predict": 256}
         }
         pedido = urllib.request.Request(
             OLLAMA_CHAT_URL,
@@ -649,7 +649,7 @@ class Dexbot:
                 return "Não consegui montar uma resposta agora. Pode tentar novamente?"
             self.historico.append({"role": "user", "content": pergunta})
             self.historico.append({"role": "assistant", "content": texto})
-            self.historico = self.historico[-20:]
+            self.historico = self.historico[-8:]
             self.salvar_historico()
             return texto
         except urllib.error.URLError:
