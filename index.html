@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#10131d">
+  <title>Dexbot — Assistente inteligente</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="./"><span class="brand-mark">D</span><span>Dexbot</span></a>
+      <button class="new-chat" id="newChatButton">＋ Nova conversa</button>
+      <div class="side-label">SEU ESPAÇO</div>
+      <div class="side-note">Suas conversas aparecerão aqui.</div>
+      <div class="sidebar-bottom">
+        <div class="status-dot"></div>
+        <span>Interface em desenvolvimento</span>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="mobile-brand" id="menuButton" aria-label="Abrir menu">☰</button>
+        <div class="model-name"><span class="tiny-orb"></span> Dexbot <span class="version">Preview</span></div>
+        <a class="github-link" href="https://github.com/henry4663/dn-ss" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </header>
+
+      <section class="chat-area" id="chatArea">
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">D</div>
+          <p class="eyebrow">SEU ASSISTENTE</p>
+          <h1>O que vamos <span>descobrir</span> hoje?</h1>
+          <p class="welcome-copy">Faça uma pergunta, envie uma imagem ou peça ajuda com uma atividade.</p>
+          <div class="suggestions">
+            <button class="suggestion" data-prompt="Explique uma conta de matemática passo a passo."><span>01</span><b>Matemática</b><small>Resolver e explicar contas</small></button>
+            <button class="suggestion" data-prompt="Ajude-me a entender um texto."><span>02</span><b>Entender textos</b><small>Ler e explicar conteúdos</small></button>
+            <button class="suggestion" data-prompt="Como posso estudar melhor este assunto?"><span>03</span><b>Aprender</b><small>Explicações passo a passo</small></button>
+          </div>
+        </div>
+        <div class="messages" id="messages" aria-live="polite"></div>
+      </section>
+
+      <section class="composer-wrap">
+        <div class="attachment-preview" id="attachmentPreview" hidden></div>
+        <form class="composer" id="chatForm">
+          <input id="imageInput" type="file" accept="image/*" hidden>
+          <button class="attach-button" type="button" id="attachButton" aria-label="Anexar imagem" title="Anexar imagem">＋</button>
+          <textarea id="messageInput" rows="1" placeholder="Pergunte alguma coisa ao Dexbot..." aria-label="Sua mensagem"></textarea>
+          <button class="send-button" id="sendButton" type="submit" aria-label="Enviar mensagem">↑</button>
+        </form>
+        <p class="disclaimer">O Dexbot ainda está em desenvolvimento. As respostas de IA serão conectadas na próxima etapa.</p>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
