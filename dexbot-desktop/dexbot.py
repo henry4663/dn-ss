@@ -577,6 +577,14 @@ class Dexbot:
         return None
 
     def responder(self, pergunta):
+        pergunta_normalizada = normalizar(pergunta)
+        for item in self.exemplos:
+            if normalizar(item.get("pergunta", "")) == pergunta_normalizada:
+                return item.get("resposta", "")
+
+        if len(set(self.palavras_chave(pergunta))) < 2:
+            return "Pode completar a pergunta? Quero ter certeza do assunto antes de responder."
+
         conhecimento = self.buscar_conhecimento(pergunta)
         if conhecimento:
             return conhecimento
