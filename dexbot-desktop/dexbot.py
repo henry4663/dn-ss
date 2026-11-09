@@ -16,6 +16,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "dexbot_dados.json")
 MODEL_FILE = os.path.join(BASE_DIR, "dexbot_modelo.json")
 BASE_CONHECIMENTO = os.path.join(BASE_DIR, "dexbot_conhecimento.json")
+HISTORY_FILE = os.path.join(BASE_DIR, "dexbot_conversa.json")
+OLLAMA_MODEL = "qwen2.5:1.5b"
+OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
 EXTENSOES_TEXTO = {".txt", ".md", ".py", ".html", ".css", ".js", ".json", ".csv", ".xml", ".yml", ".yaml", ".ini", ".log"}
 
 class ExtratorTexto(HTMLParser):
@@ -150,6 +153,7 @@ class Dexbot:
         self.vocabulario = []
         self.respostas = []
         self.rede = None
+        self.historico = self.carregar_historico()
         self.treinar()
 
     def carregar_dados(self):
@@ -591,63 +595,71 @@ class Dexbot:
             return melhor_item.get("resposta")
         return None
 
-    def responder(self, pergunta):
-        pergunta_normalizada = normalizar(pergunta)
-        for item in self.exemplos:
-            if normalizar(item.get("pergunta", "")) == pergunta_normalizada:
-                return item.get("resposta", "")
-
-        if len(set(self.palavras_chave(pergunta))) < 2:
-            return "Pode completar a pergunta? Quero ter certeza do assunto antes de responder."
-
-        conhecimento = self.buscar_conhecimento(pergunta)
-        if conhecimento:
-            return conhecimento
-
-        resposta_parecida = self.interpretar_exemplo(pergunta)
-        if resposta_parecida:
-            return resposta_parecida
-
-        if not self.rede:
-            return "Ainda não tenho dados suficientes. Use /ensinar."
-
-        entrada = vetorizar(pergunta, self.vocabulario)
-        if not any(entrada):
-            print("Dexbot: Ainda não conheço esse assunto. Vou pesquisar na internet...")
-            self.pesquisar_automatico(pergunta)
-            conhecimento_novo = self.buscar_conhecimento(pergunta)
-            if conhecimento_novo:
-                return conhecimento_novo
-            return "Não encontrei uma fonte confiável agora. Tente novamente ou me ensine com /ensinar."
-
-        probabilidades, _ = self.rede.prever(entrada)
-        melhor = max(range(len(probabilidades)), key=probabilidades.__getitem__)
-        confianca = probabilidades[melhor]
-
-        if confianca < 0.55:
-            print("Dexbot: Não tenho certeza. Vou pesquisar para tentar responder...")
-            self.pesquisar_automatico(pergunta)
-            conhecimento_novo = self.buscar_conhecimento(pergunta)
-            if conhecimento_novo:
-                return conhecimento_novo
-            return "Pesquisei, mas não encontrei informação suficiente. Você pode me ensinar com /ensinar."
-        return self.respostas[melhor]
-
-    def pesquisar_automatico(self, pergunta):
-        """Pesquisa quando a resposta não é conhecida e salva os resultados na memória local."""
+    def carregar_historico(self):
         try:
-            total = self.pesquisar_web(pergunta)
-            if total <= 0:
-                estado = [0]
-                total = self.pesquisar_wikipedia(pergunta, estado)
-            if total > 0:
-                print("Dexbot: Encontrei conteúdo. Ele foi guardado na memória local.")
-            else:
-                print("Dexbot: Não consegui obter conteúdo desta vez.")
-            return total
+            with open(HISTORY_FILE, "r", encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            return dados[-20:] if isinstance(dados, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def salvar_historico(self):
+        try:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as arquivo:
+                json.dump(self.historico[-20:], arquivo, ensure_ascii=False, indent=2)
+        except OSError as erro:
+            print("Dexbot: Não consegui salvar a conversa:", erro)
+
+    def responder(self, pergunta):
+        # Recupera um trecho da memória local para dar contexto ao modelo.
+        contexto = self.buscar_conhecimento(pergunta)
+        sistema = (
+            "Você é Dexbot, uma assistente de IA local. "
+            "Converse naturalmente em português do Brasil, como uma pessoa educada e clara. "
+            "Entenda o contexto das mensagens anteriores, responda diretamente e explique "
+            "com suas próprias palavras. Se não souber, diga que não sabe; nunca invente fatos. "
+            "Faça uma pergunta curta quando a mensagem estiver ambígua. "
+            "Use linguagem simples, sem repetir a pergunta."
+        )
+        if contexto:
+            sistema += "\n\nTrecho da memória local que pode ajudar (verifique se é relevante):\n" + contexto[:3500]
+
+        mensagens = [{"role": "system", "content": sistema}]
+        mensagens.extend(self.historico[-12:])
+        mensagens.append({"role": "user", "content": pergunta})
+
+        corpo = {
+            "model": OLLAMA_MODEL,
+            "messages": mensagens,
+            "stream": False,
+            "keep_alive": "10m",
+            "options": {"temperature": 0.7, "num_ctx": 4096}
+        }
+        pedido = urllib.request.Request(
+            OLLAMA_CHAT_URL,
+            data=json.dumps(corpo).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(pedido, timeout=180) as resposta:
+                dados = json.loads(resposta.read(2_000_000).decode("utf-8"))
+            texto = dados.get("message", {}).get("content", "").strip()
+            if not texto:
+                return "Não consegui montar uma resposta agora. Pode tentar novamente?"
+            self.historico.append({"role": "user", "content": pergunta})
+            self.historico.append({"role": "assistant", "content": texto})
+            self.historico = self.historico[-20:]
+            self.salvar_historico()
+            return texto
+        except urllib.error.URLError:
+            return (
+                "Não consegui conectar ao Ollama. Abra o Ollama no Windows e "
+                "confirme que o modelo " + OLLAMA_MODEL + " foi instalado. "
+                "Depois tente novamente."
+            )
         except Exception as erro:
-            print("Dexbot: A pesquisa automática falhou:", erro)
-            return 0
+            return "Tive um erro ao conversar com o modelo local: " + str(erro)
 
     def ensinar(self):
         pergunta = input("Nova pergunta: ").strip()
@@ -663,7 +675,8 @@ class Dexbot:
         print("\n" + "=" * 48)
         print("             DEXBOT - IA PROPRIA V1")
         print("=" * 48)
-        print("Rede neural criada em Python puro. Sem API e sem internet.")
+        print("IA conversacional local: Ollama + " + OLLAMA_MODEL)
+        print("A conversa fica salva localmente em dexbot_conversa.json.")
         print("Digite /ajuda para ver os comandos.\n")
 
         while True:
@@ -686,6 +699,7 @@ class Dexbot:
                 print("/ensinar  - adicionar pergunta e resposta")
                 print("/treinar  - treinar novamente a rede neural")
                 print("/memoria  - mostrar quantidade de exemplos")
+                print("/limparconversa - apagar o histórico de conversa")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
                 print("/treinarweb - iniciar pesquisa contínua na internet")
                 print("/voltar - voltar ao modo de pesquisa contínua")
@@ -696,7 +710,11 @@ class Dexbot:
             elif comando == "/treinar":
                 self.treinar()
             elif comando == "/memoria":
-                print("Dexbot: Tenho", len(self.exemplos), "exemplos de treinamento.")
+                print("Dexbot: Tenho", len(self.exemplos), "exemplos de treinamento e", len(self.historico), "mensagens recentes salvas.")
+            elif comando == "/limparconversa":
+                self.historico = []
+                self.salvar_historico()
+                print("Dexbot: Histórico da conversa apagado.")
             elif comando == "/pesquisar":
                 self.pesquisar_pasta()
             elif comando in {"/treinarweb", "/pesquisarcontinuo", "/voltar"}:
