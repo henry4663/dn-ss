@@ -356,7 +356,8 @@ class Dexbot:
 
     def modo_treinamento_web(self):
         print("\nMODO DE TREINAMENTO PELA INTERNET")
-        print("Digite um assunto para pesquisar. Digite PARAR para encerrar.")
+        print("A pesquisa fica em ciclo: informe assuntos quantas vezes quiser.")
+        print("Digite PARAR para voltar ao chat. Depois use /voltar para pesquisar novamente.")
         total = 0
         while True:
             try:
@@ -467,6 +468,29 @@ class Dexbot:
         print("\nDexbot: Estudo inicial concluído. Total recebido:", format(total_estado[0] / 1024, ".1f"), "KB.")
         print("Dexbot: O conhecimento fica em dexbot_conhecimento.json.")
 
+    def palavras_chave(self, texto):
+        ignorar = {
+            "que", "qual", "quais", "como", "para", "com", "uma", "sobre",
+            "isso", "esse", "essa", "dos", "das", "por", "pelo", "pela",
+            "nos", "nas", "tem", "ser", "foi", "sao", "the", "and"
+        }
+        palavras = normalizar(texto).split()
+        resultado = []
+        for palavra in palavras:
+            if len(palavra) < 3 or palavra in ignorar:
+                continue
+            # Reduz algumas terminações comuns do português para aproximar
+            # palavras relacionadas, sem alterar o texto original exibido.
+            for final in ("amentos", "imento", "imentos", "acoes", "acao",
+                          "mente", "idades", "idade", "adores", "adora",
+                          "ando", "endo", "indo", "ados", "adas", "idos",
+                          "idas", "es", "os", "as"):
+                if len(palavra) > len(final) + 3 and palavra.endswith(final):
+                    palavra = palavra[:-len(final)]
+                    break
+            resultado.append(palavra)
+        return resultado
+
     def buscar_conhecimento(self, pergunta):
         if not os.path.exists(BASE_CONHECIMENTO):
             return None
@@ -476,48 +500,81 @@ class Dexbot:
         except (OSError, json.JSONDecodeError):
             return None
 
-        palavras = set(normalizar(pergunta).split())
-        palavras = {p for p in palavras if len(p) > 2 and p not in {
-            "que", "qual", "quais", "como", "para", "com", "uma", "sobre",
-            "isso", "esse", "essa", "dos", "das", "por", "the", "and"
-        }}
-        if not palavras:
+        consulta = self.palavras_chave(pergunta)
+        if not consulta:
             return None
-
+        contagem_consulta = Counter(consulta)
         melhor = None
-        maior_pontuacao = 0
+        maior_pontuacao = 0.0
+
         for doc in documentos:
             texto = doc.get("trecho", "")
-            tokens = set(normalizar(texto).split())
-            pontuacao = len(palavras & tokens)
+            palavras_doc = self.palavras_chave(texto)
+            if not palavras_doc:
+                continue
+            contagem_doc = Counter(palavras_doc)
+            correspondencias = sum(
+                min(qtd, contagem_doc.get(palavra, 0))
+                for palavra, qtd in contagem_consulta.items()
+            )
+            cobertura = correspondencias / max(1, len(contagem_consulta))
+            densidade = correspondencias / max(1, len(palavras_doc) ** 0.5)
+            frase = normalizar(pergunta)
+            texto_normalizado = normalizar(texto)
+            bonus_frase = 1.5 if len(frase) > 8 and frase in texto_normalizado else 0
+            pontuacao = cobertura + densidade * 0.25 + bonus_frase
             if pontuacao > maior_pontuacao:
                 maior_pontuacao = pontuacao
                 melhor = doc
-        if melhor and maior_pontuacao >= 2:
-            trecho = melhor["trecho"]
-            if len(trecho) > 900:
-                trecho = trecho[:900] + "..."
-            return "Encontrei isso em " + melhor["arquivo"] + ":\n" + trecho
+
+        if melhor and maior_pontuacao >= 0.45:
+            trecho = melhor.get("trecho", "")
+            if len(trecho) > 1100:
+                trecho = trecho[:1100] + "..."
+            origem = melhor.get("titulo") or melhor.get("arquivo", "base local")
+            return "Pelo que estudei sobre isso (" + origem + "):\n" + trecho
+        return None
+
+    def interpretar_exemplo(self, pergunta):
+        consulta = set(self.palavras_chave(pergunta))
+        if not consulta:
+            return None
+        melhor_item = None
+        melhor_indice = 0.0
+        for item in self.exemplos:
+            palavras = set(self.palavras_chave(item.get("pergunta", "")))
+            if not palavras:
+                continue
+            semelhanca = len(consulta & palavras) / max(1, len(consulta | palavras))
+            if semelhanca > melhor_indice:
+                melhor_indice = semelhanca
+                melhor_item = item
+        if melhor_item and melhor_indice >= 0.34:
+            return melhor_item.get("resposta")
         return None
 
     def responder(self, pergunta):
         conhecimento = self.buscar_conhecimento(pergunta)
         if conhecimento:
             return conhecimento
+
+        resposta_parecida = self.interpretar_exemplo(pergunta)
+        if resposta_parecida:
+            return resposta_parecida
+
         if not self.rede:
             return "Ainda não tenho dados suficientes. Use /ensinar."
 
         entrada = vetorizar(pergunta, self.vocabulario)
         if not any(entrada):
-            return "Não reconheci essas palavras. Você pode me ensinar com /ensinar."
+            return "Ainda não entendi essa frase. Você pode me ensinar com /ensinar ou pesquisar com /treinarweb."
 
         probabilidades, _ = self.rede.prever(entrada)
         melhor = max(range(len(probabilidades)), key=probabilidades.__getitem__)
         confianca = probabilidades[melhor]
 
-        if confianca < 0.48:
-            return "Ainda não aprendi a responder isso. Você pode me ensinar com /ensinar."
-
+        if confianca < 0.55:
+            return "Ainda não aprendi o significado dessa frase. Tente explicar com /ensinar."
         return self.respostas[melhor]
 
     def ensinar(self):
@@ -558,9 +615,10 @@ class Dexbot:
                 print("/treinar  - treinar novamente a rede neural")
                 print("/memoria  - mostrar quantidade de exemplos")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
-                print("/treinarweb - pesquisar sites continuamente e guardar conhecimento")
+                print("/treinarweb - iniciar pesquisa contínua na internet")
+                print("/voltar - voltar ao modo de pesquisa contínua")
                 print("/wiki - estudar novamente a Wikipédia em português")
-                print("/sair     - fechar a Dexbot\n")
+                print("/sair - fechar a Dexbot\n")
             elif comando == "/ensinar":
                 self.ensinar()
             elif comando == "/treinar":
@@ -569,8 +627,10 @@ class Dexbot:
                 print("Dexbot: Tenho", len(self.exemplos), "exemplos de treinamento.")
             elif comando == "/pesquisar":
                 self.pesquisar_pasta()
-            elif comando == "/treinarweb":
+            elif comando in {"/treinarweb", "/pesquisarcontinuo", "/voltar"}:
                 self.modo_treinamento_web()
+            elif comando == "/parar":
+                print("Dexbot: Você já está no chat. Use /voltar para retomar a pesquisa.")
             elif comando == "/wiki":
                 self.modo_treinamento_wiki()
             else:
