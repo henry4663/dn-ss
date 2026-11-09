@@ -385,7 +385,7 @@ class Dexbot:
             with urllib.request.urlopen(pedido, timeout=20) as resposta:
                 dados = json.loads(resposta.read(500000).decode("utf-8"))
         except Exception as erro:
-            print("\\nDexbot: Falha ao pesquisar Wikipedia:", erro)
+            print("\nDexbot: Falha ao pesquisar Wikipedia:", erro)
             return 0
 
         paginas = dados.get("query", {}).get("search", [])
@@ -457,14 +457,14 @@ class Dexbot:
             "ciência da computação",
             "internet"
         ]
-        print("\\nDEXBOT: Iniciando estudo automático na Wikipédia em português.")
+        print("\nDEXBOT: Iniciando estudo automático na Wikipédia em português.")
         print("Vou pesquisar artigos, guardar trechos no PC e mostrar os KB recebidos.")
         total_estado = [0]
         for indice, assunto in enumerate(assuntos, 1):
-            print("\\nAssunto", indice, "de", len(assuntos), ":", assunto)
+            print("\nAssunto", indice, "de", len(assuntos), ":", assunto)
             self.pesquisar_wikipedia(assunto, total_estado)
         self.barra_progresso(total_estado[0], "Estudo inicial salvo")
-        print("\\nDexbot: Estudo inicial concluído. Total recebido:", format(total_estado[0] / 1024, ".1f"), "KB.")
+        print("\nDexbot: Estudo inicial concluído. Total recebido:", format(total_estado[0] / 1024, ".1f"), "KB.")
         print("Dexbot: O conhecimento fica em dexbot_conhecimento.json.")
 
     def buscar_conhecimento(self, pergunta):
