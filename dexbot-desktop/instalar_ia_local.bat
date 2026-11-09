@@ -33,29 +33,35 @@ if not defined PYTHON (
     exit /b 1
 )
 
+set "OLLAMA="
 where ollama >nul 2>nul
-if errorlevel 1 (
-    echo ERRO: Ollama nao foi encontrado.
-    echo Instale o Ollama para Windows. Depois abra este arquivo novamente.
-    start "" "https://ollama.com/download"
+if not errorlevel 1 for /f "delims=" %%I in ('where ollama') do if not defined OLLAMA set "OLLAMA=%%I"
+if not defined OLLAMA if exist "%LocalAppData%\Programs\Ollama\ollama.exe" set "OLLAMA=%LocalAppData%\Programs\Ollama\ollama.exe"
+if not defined OLLAMA if exist "%ProgramFiles%\Ollama\ollama.exe" set "OLLAMA=%ProgramFiles%\Ollama\ollama.exe"
+if not defined OLLAMA (
+    echo ERRO: O instalador do Ollama nao foi localizado neste Windows.
+    echo Se voce acabou de instalar, feche esta janela e abra o CMD novamente.
+    echo Se ainda nao instalou, execute: winget install --id Ollama.Ollama -e
+    echo.
     pause
     exit /b 1
 )
+
 
 echo Verificando o servico local do Ollama...
 curl.exe -s http://127.0.0.1:11434/api/tags >nul 2>nul
 if errorlevel 1 (
     echo Iniciando Ollama...
-    start "Ollama" /min cmd /c "ollama serve"
+    start "Ollama Server" /min "%OLLAMA%" serve
     timeout /t 5 /nobreak >nul
 )
 
 echo.
 echo Conferindo o modelo Qwen 2.5 1.5B...
-ollama show qwen2.5:1.5b >nul 2>nul
+"%OLLAMA%" show qwen2.5:1.5b >nul 2>nul
 if errorlevel 1 (
     echo Baixando o modelo. Aguarde; pode demorar.
-    ollama pull qwen2.5:1.5b
+    "%OLLAMA%" pull qwen2.5:1.5b
     if errorlevel 1 (
         echo ERRO: nao foi possivel baixar o modelo.
         pause
