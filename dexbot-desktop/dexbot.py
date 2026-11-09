@@ -194,7 +194,7 @@ class Dexbot:
                     if not conteudo:
                         continue
                     total_bytes += tamanho
-                    blocos = [b.strip() for b in re.split(r"\\n\\s*\\n", conteudo) if len(b.strip()) >= 40]
+                    blocos = [b.strip() for b in re.split(r"\n\s*\n", conteudo) if len(b.strip()) >= 40]
                     if not blocos:
                         blocos = [conteudo[i:i+1200].strip() for i in range(0, len(conteudo), 1200)]
                     for bloco in blocos:
@@ -256,7 +256,7 @@ class Dexbot:
             trecho = melhor["trecho"]
             if len(trecho) > 900:
                 trecho = trecho[:900] + "..."
-            return "Encontrei isso em " + melhor["arquivo"] + ":\\n" + trecho
+            return "Encontrei isso em " + melhor["arquivo"] + ":\n" + trecho
         return None
 
     def responder(self, pergunta):
