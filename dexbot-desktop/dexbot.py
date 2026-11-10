@@ -157,6 +157,7 @@ class Dexbot:
         self.historico = self.carregar_historico()
         # Mantém a base de conhecimento em RAM para evitar leituras repetidas do disco.
         self.conhecimento_cache = self.carregar_conhecimento()
+        self.indice_conhecimento = self.criar_indice_conhecimento()
         self.banco_palavras = self.carregar_banco_palavras()
         self.treinar()
 
@@ -629,12 +630,45 @@ class Dexbot:
         try:
             with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
                 dados = json.load(arquivo)
-            return dados if isinstance(dados, list) else []
+            if not isinstance(dados, list):
+                return []
+            # Converte a base antiga para frases pequenas uma única vez.
+            frases = []
+            vistas = set()
+            mudou = False
+            for item in dados:
+                if not isinstance(item, dict):
+                    continue
+                texto = str(item.get("frase") or item.get("trecho") or "")
+                origem = str(item.get("origem") or item.get("titulo") or item.get("fonte") or item.get("arquivo") or "memória local")
+                partes = [texto] if item.get("frase") else re.split(r"(?<=[.!?])\s+", texto)
+                for frase in partes:
+                    frase = re.sub(r"\s+", " ", frase).strip()[:500]
+                    if len(frase) < 35 or frase in vistas:
+                        continue
+                    vistas.add(frase)
+                    frases.append({"frase": frase, "origem": origem})
+                if "frase" not in item:
+                    mudou = True
+            if mudou:
+                temporario = BASE_CONHECIMENTO + ".tmp"
+                with open(temporario, "w", encoding="utf-8") as arquivo:
+                    json.dump(frases, arquivo, ensure_ascii=False)
+                os.replace(temporario, BASE_CONHECIMENTO)
+                print("Dexbot: Memória antiga convertida para frases curtas.")
+            return frases
         except (OSError, json.JSONDecodeError):
             return []
 
+    def criar_indice_conhecimento(self):
+        # Pré-calcula as palavras uma vez na inicialização para acelerar perguntas.
+        return [
+            (item, set(self.palavras_chave(item.get("frase", ""))))
+            for item in self.conhecimento_cache
+        ]
+
     def salvar_conhecimento(self, novos):
-        # Guarda somente frases curtas e úteis, sem páginas/documentos completos.
+        # Guarda somente frases curtas e atualiza o índice que fica em RAM.
         antigos = getattr(self, "conhecimento_cache", None)
         if antigos is None:
             antigos = self.carregar_conhecimento()
@@ -644,16 +678,14 @@ class Dexbot:
             texto = str(doc.get("trecho", doc.get("frase", "")))
             origem = str(doc.get("titulo") or doc.get("fonte") or doc.get("arquivo") or "memória local")
             for frase in re.split(r"(?<=[.!?])\s+", texto):
-                frase = re.sub(r"\s+", " ", frase).strip()
-                if len(frase) < 35:
-                    continue
-                frase = frase[:500]
-                if frase in existentes:
+                frase = re.sub(r"\s+", " ", frase).strip()[:500]
+                if len(frase) < 35 or frase in existentes:
                     continue
                 antigos.append({"frase": frase, "origem": origem})
                 existentes.add(frase)
                 adicionados += 1
         self.conhecimento_cache = antigos
+        self.indice_conhecimento = self.criar_indice_conhecimento()
         temporario = BASE_CONHECIMENTO + ".tmp"
         with open(temporario, "w", encoding="utf-8") as arquivo:
             json.dump(antigos, arquivo, ensure_ascii=False)
@@ -729,9 +761,8 @@ class Dexbot:
         return resultado
 
     def buscar_conhecimento(self, pergunta):
-        # Busca somente frases curtas já salvas em RAM.
-        frases = self.conhecimento_cache
-        if not frases:
+        # Compara a pergunta com um índice de frases já preparado na RAM.
+        if not self.indice_conhecimento:
             return None
         consulta = set(self.palavras_chave(pergunta))
         if len(consulta) < 2:
@@ -739,9 +770,7 @@ class Dexbot:
         melhor_frase = ""
         melhor_origem = ""
         melhor_pontuacao = 0.0
-        for item in frases:
-            frase = item.get("frase", item.get("trecho", ""))
-            termos = set(self.palavras_chave(frase))
+        for item, termos in self.indice_conhecimento:
             if not termos:
                 continue
             pontos = len(consulta & termos)
@@ -751,8 +780,8 @@ class Dexbot:
             pontuacao = cobertura + pontos / max(1, len(termos) ** 0.5) * 0.15
             if pontuacao > melhor_pontuacao:
                 melhor_pontuacao = pontuacao
-                melhor_frase = frase
-                melhor_origem = item.get("origem") or item.get("titulo") or item.get("arquivo") or "memória local"
+                melhor_frase = item.get("frase", "")
+                melhor_origem = item.get("origem", "memória local")
         if melhor_frase and melhor_pontuacao >= 0.48:
             return "Frase da memória (" + melhor_origem + "):\n" + melhor_frase
         return None
