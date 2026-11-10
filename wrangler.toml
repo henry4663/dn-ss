@@ -2,6 +2,9 @@ name = "dexbot"
 main = "worker.js"
 compatibility_date = "2026-11-10"
 
+[vars]
+DEXBOT_ORIGIN = "https://enjoy-samba-placing-shorts.trycloudflare.com"
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
