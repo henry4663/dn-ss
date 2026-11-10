@@ -1,37 +1,47 @@
 # Dexbot
 
-Interface web publicada pelo Cloudflare Worker. O modelo Ollama e o cérebro Python do Dexbot rodam no PC.
+O site é servido pelo Cloudflare Worker. O modelo Ollama e o cérebro Python rodam no PC.
 
 ## Arquitetura
 
-- `index.html`, `style.css`, `app.js`: interface.
-- `worker.js`: API do Worker, que encaminha chamadas para o PC.
-- `wrangler.toml`: configuração de publicação do Worker e dos arquivos estáticos.
-- `dexbot-desktop/dexbot.py`: lógica principal, memória e conhecimento.
+- `public/`: arquivos públicos da interface.
+- `worker.js`: API intermediária do Cloudflare, que encaminha as mensagens para o PC.
+- `wrangler.toml`: configuração do Worker e dos arquivos públicos.
+- `dexbot-desktop/dexbot.py`: lógica principal do Dexbot.
 - `dexbot-desktop/interface/dexbot_web.py`: API local protegida.
+- `dexbot-desktop/iniciar_conexao_publica.bat`: inicia a API local e o túnel HTTPS.
 
-## Configuração necessária no Worker
+## Publicação automática
 
-Defina estas variáveis/segredos no ambiente do Cloudflare Worker:
+O GitHub Actions publica o Worker quando há atualização na branch `main`.
 
-- `DEXBOT_ORIGIN`: URL HTTPS do túnel que aponta para `http://127.0.0.1:8765` (por exemplo, a URL gerada pelo Quick Tunnel do cloudflared).
-- `DEXBOT_TOKEN`: conteúdo do arquivo local `dexbot-desktop/.dexbot-token`, criado automaticamente na primeira execução do servidor.
+Cadastre estes dois **Actions secrets** no repositório GitHub (Settings → Secrets and variables → Actions):
 
-Nunca publique o token no GitHub nem coloque-o no JavaScript do navegador.
+- `CLOUDFLARE_API_TOKEN`: token de API do Cloudflare com permissão para editar Workers.
+- `CLOUDFLARE_ACCOUNT_ID`: ID da conta Cloudflare.
 
-## Iniciar no Windows
+Sem esses dois secrets, o fluxo de publicação não consegue autenticar.
 
-1. Instale e inicie o Ollama com o modelo `qwen2.5-coder:1.5b`.
-2. Execute `dexbot-desktop/interface/iniciar_interface.bat`.
-3. Em outro terminal, inicie o túnel:
-   `cloudflared tunnel --url http://127.0.0.1:8765`
-4. Configure a URL HTTPS exibida como `DEXBOT_ORIGIN` no Worker.
-5. Cadastre o conteúdo de `dexbot-desktop/.dexbot-token` como segredo `DEXBOT_TOKEN` no Worker.
+## Conectar o PC ao Worker
 
-O Quick Tunnel gera uma URL temporária; se ela mudar, atualize `DEXBOT_ORIGIN`. O PC, Ollama, servidor Python e túnel precisam permanecer ligados para o chat responder.
+No Windows:
 
-## Limitações atuais
+1. Deixe o Ollama aberto com o modelo `qwen2.5-coder:1.5b instalado.
+2. Execute `dexbot-desktop/iniciar_conexao_publica.bat`.
+3. O arquivo privado `dexbot-desktop/.dexbot-token` será aberto no Bloco de Notas.
+4. A janela do túnel mostrará uma URL HTTPS terminada em `.trycloudflare.com`.
+
+No ambiente do Worker, configure os secrets:
+
+- `DEXBOT_ORIGIN`: a URL HTTPS mostrada pelo cloudflared, sem caminho adicional.
+- `DEXBOT_TOKEN`: o conteúdo de `dexbot-desktop/.dexbot-token`.
+
+Nunca coloque o token no GitHub, no HTML ou no JavaScript do navegador.
+
+O Quick Tunnel gera uma URL temporária. Se ela mudar, atualize `DEXBOT_ORIGIN`. O PC, Ollama, janela da API e túnel precisam permanecer ligados para o chat responder.
+
+## Limitações
 
 - O chat envia texto ao Dexbot.
-- Imagens aparecem na interface, mas ainda não são interpretadas pelo modelo.
-- O servidor local escuta apenas em `127.0.0.1` e exige autenticação nas rotas da API.
+- A imagem anexada aparece como prévia, mas ainda não é analisada pelo modelo.
+- A API local escuta apenas em `127.0.0.1` e exige autenticação.
