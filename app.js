@@ -12,6 +12,8 @@ const sidebar = document.querySelector(".sidebar");
 
 let selectedImage = null;
 let selectedImageUrl = null;
+let busy = false;
+let conversation = [];
 
 function addMessage(text, imageUrl, author) {
   const row = document.createElement("div");
@@ -28,13 +30,11 @@ function addMessage(text, imageUrl, author) {
     image.alt = "Imagem enviada";
     content.appendChild(image);
   }
-  if (author === "user") {
-    row.append(content, avatar);
-  } else {
-    row.append(avatar, content);
-  }
+  if (author === "user") row.append(content, avatar);
+  else row.append(avatar, content);
   messages.appendChild(row);
   row.scrollIntoView({ behavior: "smooth", block: "end" });
+  return row;
 }
 
 function clearAttachment() {
@@ -46,12 +46,18 @@ function clearAttachment() {
   preview.replaceChildren();
 }
 
+function setBusy(value) {
+  busy = value;
+  sendButton.disabled = value;
+  input.disabled = value;
+  sendButton.textContent = value ? "…" : "↑";
+}
+
 attachButton.addEventListener("click", () => imageInput.click());
 
 imageInput.addEventListener("change", () => {
   const file = imageInput.files && imageInput.files[0];
-  if (!file) return;
-  if (!file.type.startsWith("image/")) return;
+  if (!file || !file.type.startsWith("image/")) return;
   selectedImage = file;
   if (selectedImageUrl) URL.revokeObjectURL(selectedImageUrl);
   selectedImageUrl = URL.createObjectURL(file);
@@ -69,17 +75,47 @@ imageInput.addEventListener("change", () => {
   preview.append(image, name, remove);
 });
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (busy) return;
   const text = input.value.trim();
   if (!text && !selectedImage) return;
+
   welcome.hidden = true;
   const imageUrl = selectedImageUrl;
-  addMessage(text, imageUrl, "user");
+  addMessage(text || "Imagem enviada.", imageUrl, "user");
   input.value = "";
   input.style.height = "auto";
   clearAttachment();
-  addMessage("Recebi sua mensagem! A interface já está pronta para receber a conexão com o mecanismo de IA. Essa conexão será adicionada na próxima etapa.", null, "assistant");
+
+  if (!text) {
+    addMessage("No momento, o Dexbot recebe texto. O envio de imagens ainda não está ligado ao modelo.", null, "assistant");
+    return;
+  }
+
+  conversation.push({ role: "user", content: text });
+  const typing = addMessage("Pensando…", null, "assistant");
+  setBusy(true);
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: conversation.slice(-30) })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Falha ao conversar com o servidor.");
+    if (!data.response) throw new Error("O servidor respondeu sem texto.");
+    typing.querySelector(".message-content").textContent = data.response;
+    conversation.push({ role: "assistant", content: data.response });
+  } catch (error) {
+    typing.querySelector(".message-content").textContent =
+      "Não consegui alcançar o Dexbot no PC. " + (error.message || "Verifique se o servidor e o túnel estão ligados.");
+    conversation.pop();
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
 });
 
 input.addEventListener("input", () => {
@@ -99,6 +135,7 @@ newChatButton.addEventListener("click", () => {
   welcome.hidden = false;
   clearAttachment();
   input.value = "";
+  conversation = [];
   sidebar.classList.remove("open");
 });
 
