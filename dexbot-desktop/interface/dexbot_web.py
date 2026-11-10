@@ -1,6 +1,7 @@
 import json
 import sys
 import threading
+import urllib.request
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -9,12 +10,27 @@ HERE = Path(__file__).resolve().parent
 PROJECT_DIR = HERE.parent
 REPO_DIR = PROJECT_DIR.parent
 PUBLIC_DIR = REPO_DIR / "public"
+CACHE_DIR = HERE / "public_cache"
+PUBLIC_FILES = ("index.html", "app.js", "style.css")
 sys.path.insert(0, str(PROJECT_DIR))
 
 from dexbot import Dexbot
 
-if not PUBLIC_DIR.is_dir():
-    raise FileNotFoundError(f"Pasta do site não encontrada: {PUBLIC_DIR}")
+if not PUBLIC_DIR.is_dir() or not all((PUBLIC_DIR / name).is_file() for name in PUBLIC_FILES):
+    # Permite iniciar mesmo quando o usuário baixou apenas dexbot-desktop.
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for name in PUBLIC_FILES:
+        url = f"https://raw.githubusercontent.com/henry4663/dn-ss/main/public/{name}"
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "Dexbot"})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = response.read()
+            (CACHE_DIR / name).write_bytes(data)
+        except Exception as error:
+            raise RuntimeError(
+                f"Não consegui baixar public/{name} do GitHub: {error}"
+            ) from error
+    PUBLIC_DIR = CACHE_DIR
 
 print("[Dexbot Web] Carregando a lógica principal do Dexbot...")
 dexbot = Dexbot()
