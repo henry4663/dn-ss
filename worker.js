@@ -5,9 +5,9 @@ export default {
     const isStatus = url.pathname === "/api/status";
 
     if (isChat || isStatus) {
-      if (!env.DEXBOT_ORIGIN || !env.DEXBOT_TOKEN) {
+      if (!env.DEXBOT_ORIGIN) {
         return Response.json(
-          { error: "Servidor ainda não configurado: faltam DEXBOT_ORIGIN e DEXBOT_TOKEN." },
+          { error: "DEXBOT_ORIGIN não foi configurado no Worker." },
           { status: 503, headers: { "Cache-Control": "no-store" } }
         );
       }
@@ -24,10 +24,7 @@ export default {
       }
 
       const target = new URL(url.pathname, origin);
-      const headers = new Headers({
-        "Authorization": "Bearer " + env.DEXBOT_TOKEN,
-        "Accept": "application/json"
-      });
+      const headers = new Headers({ "Accept": "application/json" });
       let body;
       if (isChat) {
         headers.set("Content-Type", "application/json");
