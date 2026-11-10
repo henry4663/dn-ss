@@ -598,14 +598,31 @@ class Dexbot:
         return bytes_total
 
     def carregar_banco_palavras(self):
-        """Carrega o vocabulário local agrupado por letra."""
+        """Carrega o banco local; baixa do GitHub uma vez se o JSON não existir."""
+        if not os.path.exists(PALAVRAS_FILE):
+            url = "https://raw.githubusercontent.com/henry4663/dn-ss/main/dexbot-desktop/dexbot_palavras.json"
+            try:
+                pedido = urllib.request.Request(url, headers={"User-Agent": "DexbotLocal/1.0"})
+                with urllib.request.urlopen(pedido, timeout=20) as resposta:
+                    conteudo = resposta.read(2_000_000)
+                dados = json.loads(conteudo.decode("utf-8"))
+                if not isinstance(dados, dict) or not isinstance(dados.get("por_letra"), dict):
+                    raise ValueError("Formato do banco inválido")
+                temporario = PALAVRAS_FILE + ".tmp"
+                with open(temporario, "wb") as arquivo:
+                    arquivo.write(conteudo)
+                os.replace(temporario, PALAVRAS_FILE)
+                print("Dexbot: Banco de palavras baixado e salvo no PC.")
+            except Exception as erro:
+                print("Dexbot: Não consegui baixar o banco de palavras:", str(erro)[:160])
+                return {}
         try:
             with open(PALAVRAS_FILE, "r", encoding="utf-8") as arquivo:
                 dados = json.load(arquivo)
             grupos = dados.get("por_letra", {}) if isinstance(dados, dict) else {}
             return {str(letra).lower(): lista for letra, lista in grupos.items() if isinstance(lista, list)}
         except (OSError, json.JSONDecodeError):
-            print("Dexbot: Banco de palavras não encontrado. Coloque dexbot_palavras.json na pasta do programa.")
+            print("Dexbot: O arquivo dexbot_palavras.json está inválido.")
             return {}
 
     def carregar_conhecimento(self):
@@ -617,17 +634,24 @@ class Dexbot:
             return []
 
     def salvar_conhecimento(self, novos):
-        # Atualiza primeiro a cópia em RAM e depois grava no disco.
+        # Guarda somente frases curtas e úteis, sem páginas/documentos completos.
         antigos = getattr(self, "conhecimento_cache", None)
         if antigos is None:
             antigos = self.carregar_conhecimento()
-        existentes = {(d.get("arquivo"), d.get("trecho")) for d in antigos}
+        existentes = {item.get("frase", "") for item in antigos}
         adicionados = 0
         for doc in novos:
-            chave = (doc.get("arquivo"), doc.get("trecho"))
-            if chave not in existentes:
-                antigos.append(doc)
-                existentes.add(chave)
+            texto = str(doc.get("trecho", doc.get("frase", "")))
+            origem = str(doc.get("titulo") or doc.get("fonte") or doc.get("arquivo") or "memória local")
+            for frase in re.split(r"(?<=[.!?])\s+", texto):
+                frase = re.sub(r"\s+", " ", frase).strip()
+                if len(frase) < 35:
+                    continue
+                frase = frase[:500]
+                if frase in existentes:
+                    continue
+                antigos.append({"frase": frase, "origem": origem})
+                existentes.add(frase)
                 adicionados += 1
         self.conhecimento_cache = antigos
         temporario = BASE_CONHECIMENTO + ".tmp"
@@ -705,54 +729,32 @@ class Dexbot:
         return resultado
 
     def buscar_conhecimento(self, pergunta):
-        # Pesquisa diretamente na cópia em RAM, sem abrir o JSON a cada pergunta.
-        documentos = self.conhecimento_cache
-        if not documentos:
+        # Busca somente frases curtas já salvas em RAM.
+        frases = self.conhecimento_cache
+        if not frases:
             return None
-
         consulta = set(self.palavras_chave(pergunta))
-        # Perguntas vagas como "e quanto?" não devem puxar um artigo aleatório.
         if len(consulta) < 2:
             return None
-
-        melhor = None
-        melhor_pontuacao = 0.0
         melhor_frase = ""
-
-        for doc in documentos:
-            texto = doc.get("trecho", "")
-            palavras_doc = set(self.palavras_chave(texto))
-            if not palavras_doc:
+        melhor_origem = ""
+        melhor_pontuacao = 0.0
+        for item in frases:
+            frase = item.get("frase", item.get("trecho", ""))
+            termos = set(self.palavras_chave(frase))
+            if not termos:
                 continue
-
-            intersecao = consulta & palavras_doc
-            cobertura = len(intersecao) / len(consulta)
-            if cobertura < 0.35:
+            pontos = len(consulta & termos)
+            cobertura = pontos / len(consulta)
+            if cobertura < 0.4:
                 continue
-
-            frases = re.split(r"(?<=[.!?])\s+", texto)
-            frases_boas = []
-            for frase in frases:
-                termos = set(self.palavras_chave(frase))
-                pontos = len(consulta & termos)
-                if pontos:
-                    frases_boas.append((pontos / max(1, len(termos) ** 0.5), frase.strip()))
-
-            if not frases_boas:
-                continue
-            frases_boas.sort(key=lambda item: item[0], reverse=True)
-            pontuacao = cobertura + frases_boas[0][0] * 0.2
+            pontuacao = cobertura + pontos / max(1, len(termos) ** 0.5) * 0.15
             if pontuacao > melhor_pontuacao:
                 melhor_pontuacao = pontuacao
-                melhor = doc
-                melhor_frase = " ".join(frase for _, frase in frases_boas[:4])
-
-        if melhor and melhor_pontuacao >= 0.45:
-            origem = melhor.get("titulo") or melhor.get("arquivo", "base local")
-            resposta = melhor_frase[:1000].strip()
-            if resposta and resposta[-1] not in ".!?":
-                resposta += "..."
-            return "Encontrei informações relacionadas em " + origem + ":\n" + resposta
+                melhor_frase = frase
+                melhor_origem = item.get("origem") or item.get("titulo") or item.get("arquivo") or "memória local"
+        if melhor_frase and melhor_pontuacao >= 0.48:
+            return "Frase da memória (" + melhor_origem + "):\n" + melhor_frase
         return None
 
     def interpretar_exemplo(self, pergunta):
