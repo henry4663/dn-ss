@@ -1092,7 +1092,10 @@
       "estivermos",
       "espécies",
       "esquema",
-      "encantado"
+      "encantado",
+      "época",
+      "éramos",
+      "és"
     ],
     "u": [
       "um",
@@ -1126,7 +1129,15 @@
       "unidades",
       "usada",
       "unhas",
-      "unir"
+      "unir",
+      "última",
+      "única",
+      "único",
+      "último",
+      "últimos",
+      "útil",
+      "últimas",
+      "únicos"
     ],
     "p": [
       "para",
@@ -2772,7 +2783,11 @@
       "inspiração",
       "inferior",
       "interna",
-      "interessantes"
+      "interessantes",
+      "índia",
+      "íamos",
+      "índios",
+      "ídolo"
     ],
     "m": [
       "me",
@@ -3360,7 +3375,18 @@
       "obras",
       "oração",
       "oferecendo",
-      "oriente"
+      "oriente",
+      "ótimo",
+      "ótima",
+      "óbvio",
+      "óculos",
+      "ódio",
+      "óleo",
+      "ótimos",
+      "ótimas",
+      "órgãos",
+      "ópera",
+      "ônibus"
     ],
     "a": [
       "aqui",
@@ -3828,7 +3854,20 @@
       "ansiosa",
       "alimento",
       "armados",
-      "apelido"
+      "apelido",
+      "às",
+      "água",
+      "área",
+      "árvore",
+      "árvores",
+      "áfrica",
+      "álcool",
+      "ás",
+      "águas",
+      "álibi",
+      "álbum",
+      "áreas",
+      "ângulo"
     ],
     "t": [
       "tem",
@@ -4988,54 +5027,8 @@
       "rochas",
       "recebido"
     ],
-    "ó": [
-      "ótimo",
-      "ótima",
-      "óbvio",
-      "óculos",
-      "ódio",
-      "óleo",
-      "ótimos",
-      "ótimas",
-      "órgãos",
-      "ópera"
-    ],
-    "à": [
-      "às"
-    ],
-    "á": [
-      "água",
-      "área",
-      "árvore",
-      "árvores",
-      "áfrica",
-      "álcool",
-      "ás",
-      "águas",
-      "álibi",
-      "álbum",
-      "áreas"
-    ],
-    "ú": [
-      "última",
-      "única",
-      "único",
-      "último",
-      "últimos",
-      "útil",
-      "últimas",
-      "únicos"
-    ],
-    "é": [
-      "época",
-      "éramos",
-      "és"
-    ],
     "y": [
       "york"
-    ],
-    "ô": [
-      "ônibus"
     ],
     "x": [
       "xerife",
@@ -5061,15 +5054,6 @@
       "zero",
       "zona",
       "zangado"
-    ],
-    "í": [
-      "índia",
-      "íamos",
-      "índios",
-      "ídolo"
-    ],
-    "â": [
-      "ângulo"
     ]
   }
 }
