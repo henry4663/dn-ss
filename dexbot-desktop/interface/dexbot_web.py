@@ -3,12 +3,18 @@ import sys
 import threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 PROJECT_DIR = HERE.parent
+REPO_DIR = PROJECT_DIR.parent
+PUBLIC_DIR = REPO_DIR / "public"
 sys.path.insert(0, str(PROJECT_DIR))
 
 from dexbot import Dexbot
+
+if not PUBLIC_DIR.is_dir():
+    raise FileNotFoundError(f"Pasta do site não encontrada: {PUBLIC_DIR}")
 
 print("[Dexbot Web] Carregando a lógica principal do Dexbot...")
 dexbot = Dexbot()
@@ -17,7 +23,8 @@ dexbot_lock = threading.Lock()
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(HERE), **kwargs)
+        # A interface estática vem da pasta public do repositório.
+        super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
 
     def send_json(self, status, data):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -29,7 +36,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path == "/api/status":
+        route = urlsplit(self.path).path
+        if route == "/api/status":
             try:
                 from urllib.request import urlopen
                 with urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as response:
@@ -46,15 +54,16 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 self.send_json(200, {"ok": False, "model": "qwen2.5-coder:1.5b"})
             return
-        if self.path.startswith("/api/"):
+        if route.startswith("/api/"):
             self.send_json(404, {"error": "Rota não encontrada"})
             return
+        self.path = route or "/"
         if self.path == "/":
             self.path = "/index.html"
         return super().do_GET()
 
     def do_POST(self):
-        if self.path != "/api/chat":
+        if urlsplit(self.path).path != "/api/chat":
             self.send_json(404, {"error": "Rota não encontrada"})
             return
         try:
@@ -101,9 +110,11 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
     print("DEXBOT WEB iniciado sem token!")
+    print("Site:", PUBLIC_DIR)
     print("Memória local:", len(dexbot.conhecimento_cache), "trechos")
     print("Exemplos aprendidos:", len(dexbot.exemplos))
     print("Abra: http://127.0.0.1:8765")
+    print("O mesmo endereço público do túnel abrirá o site e a API.")
     print("Servidor local vinculado somente a 127.0.0.1.")
     print("Para fechar, pressione Ctrl+C.")
     try:
