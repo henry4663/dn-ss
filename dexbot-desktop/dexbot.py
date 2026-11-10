@@ -338,7 +338,7 @@ class Dexbot:
                     texto = " ".join(extrator.partes)
                 else:
                     texto = bruto.decode("utf-8", errors="ignore")
-                texto = re.sub(r"\\s+", " ", texto).strip()
+                texto = re.sub(r"\s+", " ", texto).strip()
                 if len(texto) < 100:
                     continue
                 for inicio in range(0, min(len(texto), 9000), 1200):
@@ -357,9 +357,7 @@ class Dexbot:
                         antigos = json.load(arquivo)
                 except (OSError, json.JSONDecodeError):
                     antigos = []
-            antigos.extend(aprendidos)
-            with open(BASE_CONHECIMENTO, "w", encoding="utf-8") as arquivo:
-                json.dump(antigos, arquivo, ensure_ascii=False, indent=2)
+            self.salvar_conhecimento(aprendidos)
         print()
         print("Dexbot: Pesquisa concluída. Trechos guardados:", len(aprendidos))
         return total
@@ -381,6 +379,64 @@ class Dexbot:
                 self.barra_progresso(total, "Total acumulado")
                 print()
         print("Dexbot: Modo de pesquisa encerrado. Total recebido:", format(total / 1024, ".1f"), "KB.")
+
+    def estudar_web_programacao(self, assunto=None):
+        catalogo = {
+            "html": [
+                "HTML5 estrutura do documento elementos semânticos MDN",
+                "HTML formulários validação inputs acessibilidade MDN",
+                "HTML imagens áudio vídeo links tabelas MDN",
+                "HTML acessibilidade landmarks ARIA boas práticas W3C"
+            ],
+            "css": [
+                "CSS seletores cascata especificidade box model MDN",
+                "CSS Flexbox Grid layout responsivo MDN",
+                "CSS media queries unidades responsivas acessibilidade MDN",
+                "CSS animações transições variáveis custom properties MDN"
+            ],
+            "javascript": [
+                "JavaScript fundamentos variáveis tipos funções escopo MDN",
+                "JavaScript DOM eventos manipulação elementos MDN",
+                "JavaScript arrays objetos módulos promises async await MDN",
+                "JavaScript fetch API HTTP JSON tratamento de erros MDN"
+            ],
+            "web": [
+                "web performance Core Web Vitals web.dev",
+                "segurança web XSS CSRF CSP MDN OWASP",
+                "HTTP HTTPS cookies localStorage sessionStorage MDN",
+                "debug JavaScript DevTools testes navegador MDN"
+            ]
+        }
+        fontes = "site:developer.mozilla.org OR site:whatwg.org OR site:w3.org OR site:web.dev"
+        if assunto:
+            chave = normalizar(assunto)
+            if any(p in chave for p in ("html", "css", "javascript", "js", "web")):
+                temas = []
+                for categoria, consultas in catalogo.items():
+                    if categoria in chave or (categoria == "javascript" and "js" in chave):
+                        temas.extend(consultas)
+                if not temas:
+                    temas = [assunto + " documentação oficial exemplos boas práticas"]
+            else:
+                temas = [
+                    assunto + " documentação oficial MDN",
+                    assunto + " exemplos boas práticas acessibilidade desempenho",
+                    assunto + " erros comuns compatibilidade navegadores"
+                ]
+        else:
+            temas = [q for grupo in catalogo.values() for q in grupo]
+
+        print("\\nDEXBOT: ESTUDO WEB ESPECIALIZADO")
+        print("Vou pesquisar documentação técnica e guardar os trechos no conhecimento local.")
+        print("Consultas:", len(temas), "| Fontes priorizadas: MDN, WHATWG, W3C e web.dev")
+        total = 0
+        for indice, tema in enumerate(temas, 1):
+            consulta = tema + " " + fontes
+            print("\\n[" + str(indice) + "/" + str(len(temas)) + "] " + tema)
+            total += self.pesquisar_web(consulta)
+        print("\\nEstudo finalizado. Dados recebidos:", format(total / 1024, ".1f"), "KB.")
+        print("Os trechos foram salvos em dexbot_conhecimento.json.")
+        print("Observação: isso atualiza a memória pesquisável, não retreina os pesos do Qwen.")
 
     def pesquisar_wikipedia(self, assunto, total_estado):
         parametros = {
@@ -614,23 +670,25 @@ class Dexbot:
         # Recupera um trecho da memória local para dar contexto ao modelo.
         contexto = self.buscar_conhecimento(pergunta)
         sistema = (
-            "Você é Dexbot, uma assistente especializada em programação para a web. "
-            "Sua especialidade principal é HTML, CSS e JavaScript. "
-            "Responda sempre em português do Brasil. "
-            "Quando pedirem código, entregue código funcional, completo e organizado, "
-            "sem remover recursos que o usuário já possui. "
-            "Prefira HTML, CSS e JavaScript puros, sem bibliotecas ou frameworks, "
-            "a menos que o usuário peça. "
+            "Você é Dexbot, uma assistente especializada em desenvolvimento web. "
+            "Sua especialidade inclui HTML5, CSS3, JavaScript moderno, DOM, APIs do navegador, JSON, acessibilidade, responsividade, desempenho, segurança web, depuração, HTTP, Git e publicação de sites. "
+            "Responda sempre em português do Brasil, com explicações claras e adequadas a iniciantes. "
+            "Quando pedirem código, entregue uma solução funcional, completa e organizada, sem remover recursos existentes. "
+            "Prefira tecnologias nativas da web; use bibliotecas ou frameworks somente quando forem pedidos ou realmente necessários. "
+            "Use boas práticas atuais e diferencie recursos padronizados de recursos experimentais. "
+            "Quando houver acesso à memória local, use-a como referência, mas confira coerência e não trate trechos antigos como verdade absoluta. "
+            "Para pesquisar ou recomendar APIs, prefira documentação oficial: MDN Web Docs, WHATWG, W3C, web.dev e documentação oficial dos projetos. "
+            "Não invente métodos, propriedades, atributos, APIs, compatibilidade ou resultados de testes. Quando não tiver certeza, diga isso e indique como verificar. "
             "Explique brevemente onde colocar cada arquivo e como executar. "
-            "Para projetos com vários arquivos, separe claramente cada arquivo pelo nome. "
-            "Verifique mentalmente sintaxe, nomes de variáveis e funcionamento antes de responder. "
-        "REGRA OBRIGATÓRIA: nunca entregue código pela metade, nunca use reticências para substituir código e nunca encerre no meio de um arquivo. "
-        "Quando o projeto tiver HTML, CSS e JavaScript, entregue os três arquivos completos, cada um em seu bloco de código. "
-        "Antes de terminar, confira se todos os blocos e estruturas foram fechados. Se o projeto for grande, divida a resposta em partes numeradas e continue do ponto exato, sem apagar código. "
-            "Não invente APIs nem diga que testou um código que não executou. "
-            "Se faltar informação essencial, faça uma pergunta curta. "
-            "Se o pedido for sobre Roblox/Luau, explique que esse não é seu foco principal, "
-            "mas tente ajudar corretamente."
+            "Em projetos com vários arquivos, identifique cada arquivo separadamente e mantenha cada bloco apenas com a linguagem daquele arquivo. "
+            "HTML deve conter apenas HTML; CSS deve conter apenas CSS; JavaScript deve conter apenas JavaScript. "
+            "Nunca coloque tags HTML como </script> ou </html> dentro de um arquivo .js. Nunca coloque cercas Markdown dentro do código. "
+            "Confira se IDs, classes, seletores, nomes de arquivos e funções realmente correspondem entre os arquivos. "
+            "Confira se o comportamento pedido foi aplicado ao elemento correto, e não a outro elemento por engano. "
+            "Nunca entregue código pela metade nem use reticências para substituir partes necessárias. Não force três arquivos se o pedido precisar de apenas um. "
+            "Se o projeto for grande demais para uma resposta, divida em partes numeradas e informe claramente o que falta. "
+            "Não diga que executou ou testou o código se não executou. "
+            "Se faltar informação essencial, faça uma pergunta curta."
         )
         if contexto:
             sistema += "\n\nTrecho da memória local que pode ajudar (verifique se é relevante):\n" + contexto[:3500]
@@ -744,6 +802,9 @@ class Dexbot:
                 self.modo_treinamento_web()
             elif comando == "/parar":
                 print("Dexbot: Você já está no chat. Use /voltar para retomar a pesquisa.")
+            elif comando == "/estudarweb":
+                tema = input("Tema (HTML, CSS, JavaScript, web ou assunto específico; Enter para estudar tudo): ").strip()
+                self.estudar_web_programacao(tema or None)
             elif comando == "/wiki":
                 self.modo_treinamento_wiki()
             else:
