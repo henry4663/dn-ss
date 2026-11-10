@@ -1,0 +1,51 @@
+name: Deploy Dexbot to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verificar configurações
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEXBOT_ORIGIN: ${{ secrets.DEXBOT_ORIGIN }}
+          DEXBOT_TOKEN: ${{ secrets.DEXBOT_TOKEN }}
+        run: |
+          missing=0
+          for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID DEXBOT_ORIGIN DEXBOT_TOKEN; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Falta cadastrar o segredo ${key} nas configurações do repositório GitHub."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: Configurar autenticação do Dexbot no Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEXBOT_ORIGIN: ${{ secrets.DEXBOT_ORIGIN }}
+          DEXBOT_TOKEN: ${{ secrets.DEXBOT_TOKEN }}
+        run: |
+          printf '%s' "$DEXBOT_ORIGIN" | npx --yes wrangler@4 secret put DEXBOT_ORIGIN
+          printf '%s' "$DEXBOT_TOKEN" | npx --yes wrangler@4 secret put DEXBOT_TOKEN
+
+      - name: Publicar Worker e site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy
