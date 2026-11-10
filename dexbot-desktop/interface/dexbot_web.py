@@ -1,4 +1,6 @@
+import hmac
 import json
+import secrets
 import sys
 import threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -10,15 +12,30 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from dexbot import Dexbot
 
-# Usa o mesmo cérebro do programa principal: prompt especializado,
-# memória local, índice de conhecimento e histórico persistente.
+TOKEN_FILE = PROJECT_DIR / ".dexbot-token"
+if TOKEN_FILE.exists():
+    DEXBOT_TOKEN = TOKEN_FILE.read_text(encoding="utf-8").strip()
+else:
+    DEXBOT_TOKEN = secrets.token_urlsafe(36)
+    TOKEN_FILE.write_text(DEXBOT_TOKEN, encoding="utf-8")
+    try:
+        TOKEN_FILE.chmod(0o600)
+    except OSError:
+        pass
+
 print("[Dexbot Web] Carregando a lógica principal do Dexbot...")
 dexbot = Dexbot()
 dexbot_lock = threading.Lock()
 
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(HERE), **kwargs)
+
+    def authorized(self):
+        supplied = self.headers.get("Authorization", "")
+        expected = "Bearer " + DEXBOT_TOKEN
+        return hmac.compare_digest(supplied, expected)
 
     def send_json(self, status, data):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -30,6 +47,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
+        if self.path.startswith("/api/"):
+            if not self.authorized():
+                self.send_json(401, {"error": "Acesso não autorizado"})
+                return
         if self.path == "/api/status":
             try:
                 from urllib.request import urlopen
@@ -55,6 +76,9 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path != "/api/chat":
             self.send_json(404, {"error": "Rota não encontrada"})
             return
+        if not self.authorized():
+            self.send_json(401, {"error": "Acesso não autorizado"})
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length < 2 or length > 100000:
@@ -66,8 +90,6 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(400, {"error": "Histórico de conversa inválido"})
                 return
 
-            # O Dexbot principal mantém seu próprio histórico em disco.
-            # Só enviamos a mensagem mais recente para evitar duplicações.
             pergunta = None
             for item in reversed(messages):
                 if isinstance(item, dict) and item.get("role") == "user":
@@ -82,7 +104,6 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(400, {"error": "A mensagem passou do limite de 12.000 caracteres."})
                 return
 
-            # Evita duas chamadas simultâneas alterarem o mesmo histórico local.
             with dexbot_lock:
                 resposta = dexbot.responder(pergunta)
             if not resposta:
@@ -98,13 +119,16 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("[Dexbot Web] " + (fmt % args))
 
+
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
     print("DEXBOT WEB iniciado com a lógica principal!")
     print("Memória local:", len(dexbot.conhecimento_cache), "trechos")
     print("Exemplos aprendidos:", len(dexbot.exemplos))
+    print("Token privado criado em:", TOKEN_FILE)
+    print("Copie o conteúdo desse arquivo para o segredo DEXBOT_TOKEN do Worker.")
     print("Abra: http://127.0.0.1:8765")
-    print("Somente este PC pode acessar por enquanto.")
+    print("Servidor local protegido e vinculado somente a 127.0.0.1.")
     print("Para fechar, pressione Ctrl+C.")
     try:
         server.serve_forever()
