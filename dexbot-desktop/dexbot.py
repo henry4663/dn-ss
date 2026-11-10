@@ -16,6 +16,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "dexbot_dados.json")
 MODEL_FILE = os.path.join(BASE_DIR, "dexbot_modelo.json")
 BASE_CONHECIMENTO = os.path.join(BASE_DIR, "dexbot_conhecimento.json")
+PALAVRAS_FILE = os.path.join(BASE_DIR, "dexbot_palavras.json")
 HISTORY_FILE = os.path.join(BASE_DIR, "dexbot_conversa.json")
 OLLAMA_MODEL = "qwen2.5-coder:1.5b"
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
@@ -156,6 +157,7 @@ class Dexbot:
         self.historico = self.carregar_historico()
         # Mantém a base de conhecimento em RAM para evitar leituras repetidas do disco.
         self.conhecimento_cache = self.carregar_conhecimento()
+        self.banco_palavras = self.carregar_banco_palavras()
         self.treinar()
 
     def carregar_dados(self):
@@ -595,6 +597,17 @@ class Dexbot:
         total_estado[0] += bytes_total
         return bytes_total
 
+    def carregar_banco_palavras(self):
+        """Carrega o vocabulário local agrupado por letra."""
+        try:
+            with open(PALAVRAS_FILE, "r", encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            grupos = dados.get("por_letra", {}) if isinstance(dados, dict) else {}
+            return {str(letra).lower(): lista for letra, lista in grupos.items() if isinstance(lista, list)}
+        except (OSError, json.JSONDecodeError):
+            print("Dexbot: Banco de palavras não encontrado. Coloque dexbot_palavras.json na pasta do programa.")
+            return {}
+
     def carregar_conhecimento(self):
         try:
             with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
@@ -889,6 +902,7 @@ class Dexbot:
                 print("/ensinar  - adicionar pergunta e resposta")
                 print("/treinar  - treinar novamente a rede neural")
                 print("/memoria  - mostrar dados e fontes armazenados")
+                print("/palavras A - consultar palavras do banco pela letra")
                 print("/fontes   - listar as fontes salvas na memória")
                 print("/limparconversa - apagar o histórico de conversa")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
@@ -929,6 +943,17 @@ class Dexbot:
                     print("Total:", len(base), "trechos.")
                 except (OSError, json.JSONDecodeError):
                     print("Ainda não existe uma base de conhecimento válida.")
+            elif comando.startswith("/palavras"):
+                partes = mensagem.strip().split(maxsplit=1)
+                letra = partes[1].strip().lower()[:1] if len(partes) > 1 else input("Digite uma letra (A-Z): ").strip().lower()[:1]
+                palavras = self.banco_palavras.get(letra, [])
+                if palavras:
+                    print("Dexbot: Letra", letra.upper(), "-", len(palavras), "palavras no banco:")
+                    print(", ".join(palavras[:200]))
+                    if len(palavras) > 200:
+                        print("Mostrando as primeiras 200. O banco completo continua salvo no arquivo dexbot_palavras.json.")
+                else:
+                    print("Dexbot: Não encontrei palavras para essa letra.")
             elif comando == "/limparconversa":
                 self.historico = []
                 self.salvar_historico()
