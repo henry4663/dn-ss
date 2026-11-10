@@ -20,6 +20,11 @@ echo Iniciando a API local do Dexbot...
 start "Dexbot API" "%PYTHON%" "%~dp0interface\dexbot_web.py"
 timeout /t 4 /nobreak >nul
 
+if exist "%~dp0.dexbot-token" (
+  echo Abrindo o token privado para configurar no Worker.
+  start "" notepad.exe "%~dp0.dexbot-token"
+)
+
 echo.
 echo Iniciando o tunel HTTPS. Mantenha esta janela aberta.
 echo Copie a URL https://....trycloudflare.com exibida abaixo.
