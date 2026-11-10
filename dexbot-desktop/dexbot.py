@@ -154,6 +154,8 @@ class Dexbot:
         self.respostas = []
         self.rede = None
         self.historico = self.carregar_historico()
+        # Mantém a base de conhecimento em RAM para evitar leituras repetidas do disco.
+        self.conhecimento_cache = self.carregar_conhecimento()
         self.treinar()
 
     def carregar_dados(self):
@@ -593,22 +595,33 @@ class Dexbot:
         total_estado[0] += bytes_total
         return bytes_total
 
+    def carregar_conhecimento(self):
+        try:
+            with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            return dados if isinstance(dados, list) else []
+        except (OSError, json.JSONDecodeError):
+            return []
+
     def salvar_conhecimento(self, novos):
-        antigos = []
-        if os.path.exists(BASE_CONHECIMENTO):
-            try:
-                with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
-                    antigos = json.load(arquivo)
-            except (OSError, json.JSONDecodeError):
-                antigos = []
+        # Atualiza primeiro a cópia em RAM e depois grava no disco.
+        antigos = getattr(self, "conhecimento_cache", None)
+        if antigos is None:
+            antigos = self.carregar_conhecimento()
         existentes = {(d.get("arquivo"), d.get("trecho")) for d in antigos}
+        adicionados = 0
         for doc in novos:
             chave = (doc.get("arquivo"), doc.get("trecho"))
             if chave not in existentes:
                 antigos.append(doc)
                 existentes.add(chave)
-        with open(BASE_CONHECIMENTO, "w", encoding="utf-8") as arquivo:
-            json.dump(antigos, arquivo, ensure_ascii=False, indent=2)
+                adicionados += 1
+        self.conhecimento_cache = antigos
+        temporario = BASE_CONHECIMENTO + ".tmp"
+        with open(temporario, "w", encoding="utf-8") as arquivo:
+            json.dump(antigos, arquivo, ensure_ascii=False)
+        os.replace(temporario, BASE_CONHECIMENTO)
+        return adicionados
 
     def modo_treinamento_wiki(self):
         assuntos = [
@@ -679,12 +692,9 @@ class Dexbot:
         return resultado
 
     def buscar_conhecimento(self, pergunta):
-        if not os.path.exists(BASE_CONHECIMENTO):
-            return None
-        try:
-            with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
-                documentos = json.load(arquivo)
-        except (OSError, json.JSONDecodeError):
+        # Pesquisa diretamente na cópia em RAM, sem abrir o JSON a cada pergunta.
+        documentos = self.conhecimento_cache
+        if not documentos:
             return None
 
         consulta = set(self.palavras_chave(pergunta))
