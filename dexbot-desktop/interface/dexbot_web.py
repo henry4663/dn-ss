@@ -1,6 +1,4 @@
-import hmac
 import json
-import secrets
 import sys
 import threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -12,17 +10,6 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from dexbot import Dexbot
 
-TOKEN_FILE = PROJECT_DIR / ".dexbot-token"
-if TOKEN_FILE.exists():
-    DEXBOT_TOKEN = TOKEN_FILE.read_text(encoding="utf-8").strip()
-else:
-    DEXBOT_TOKEN = secrets.token_urlsafe(36)
-    TOKEN_FILE.write_text(DEXBOT_TOKEN, encoding="utf-8")
-    try:
-        TOKEN_FILE.chmod(0o600)
-    except OSError:
-        pass
-
 print("[Dexbot Web] Carregando a lógica principal do Dexbot...")
 dexbot = Dexbot()
 dexbot_lock = threading.Lock()
@@ -31,11 +18,6 @@ dexbot_lock = threading.Lock()
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(HERE), **kwargs)
-
-    def authorized(self):
-        supplied = self.headers.get("Authorization", "")
-        expected = "Bearer " + DEXBOT_TOKEN
-        return hmac.compare_digest(supplied, expected)
 
     def send_json(self, status, data):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -47,10 +29,6 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path.startswith("/api/"):
-            if not self.authorized():
-                self.send_json(401, {"error": "Acesso não autorizado"})
-                return
         if self.path == "/api/status":
             try:
                 from urllib.request import urlopen
@@ -68,6 +46,9 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 self.send_json(200, {"ok": False, "model": "qwen2.5-coder:1.5b"})
             return
+        if self.path.startswith("/api/"):
+            self.send_json(404, {"error": "Rota não encontrada"})
+            return
         if self.path == "/":
             self.path = "/index.html"
         return super().do_GET()
@@ -75,9 +56,6 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/api/chat":
             self.send_json(404, {"error": "Rota não encontrada"})
-            return
-        if not self.authorized():
-            self.send_json(401, {"error": "Acesso não autorizado"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -122,13 +100,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
-    print("DEXBOT WEB iniciado com a lógica principal!")
+    print("DEXBOT WEB iniciado sem token!")
     print("Memória local:", len(dexbot.conhecimento_cache), "trechos")
     print("Exemplos aprendidos:", len(dexbot.exemplos))
-    print("Token privado criado em:", TOKEN_FILE)
-    print("Copie o conteúdo desse arquivo para o segredo DEXBOT_TOKEN do Worker.")
     print("Abra: http://127.0.0.1:8765")
-    print("Servidor local protegido e vinculado somente a 127.0.0.1.")
+    print("Servidor local vinculado somente a 127.0.0.1.")
     print("Para fechar, pressione Ctrl+C.")
     try:
         server.serve_forever()
