@@ -278,88 +278,187 @@ class Dexbot:
         barra = "#" * blocos + "-" * (30 - blocos)
         print("\r[" + barra + "] " + format(kb, ".1f") + " KB aprendidos | " + etapa[:35].ljust(35), end="", flush=True)
 
+    def pesquisar_api_multiplas_fontes(self, consulta):
+        """Consulta APIs públicas independentes e guarda resultados com a origem."""
+        novos = []
+        total_bytes = 0
+
+        # MDN: documentação oficial de HTML, CSS e JavaScript.
+        try:
+            url = "https://developer.mozilla.org/api/v1/search?" + urllib.parse.urlencode({
+                "q": consulta, "locale": "pt-BR"
+            })
+            pedido = urllib.request.Request(url, headers={"User-Agent": "DexbotLocal/1.0"})
+            with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                bruto = resposta.read(500000)
+            total_bytes += len(bruto)
+            dados = json.loads(bruto.decode("utf-8", errors="ignore"))
+            for item in dados.get("documents", [])[:6]:
+                titulo = item.get("title", "Documentação MDN")
+                resumo = item.get("summary", "")
+                caminho = item.get("mdn_url", "")
+                if caminho and caminho.startswith("/"):
+                    link = "https://developer.mozilla.org" + caminho
+                elif caminho.startswith("https://"):
+                    link = caminho
+                else:
+                    link = "https://developer.mozilla.org/"
+                texto = (titulo + ". " + resumo).strip()
+                if len(texto) >= 60:
+                    novos.append({
+                        "fonte": "MDN Web Docs",
+                        "titulo": titulo,
+                        "arquivo": link,
+                        "consulta": consulta,
+                        "trecho": texto[:1800]
+                    })
+            print("MDN: resultados recebidos.")
+        except Exception as erro:
+            print("MDN indisponível nesta pesquisa:", str(erro)[:120])
+
+        # Stack Overflow: perguntas e respostas técnicas; conteúdo é tratado como referência, não como instrução.
+        try:
+            url = "https://api.stackexchange.com/2.3/search/advanced?" + urllib.parse.urlencode({
+                "order": "desc", "sort": "relevance", "q": consulta,
+                "site": "stackoverflow", "pagesize": 5, "filter": "withbody"
+            })
+            pedido = urllib.request.Request(url, headers={"User-Agent": "DexbotLocal/1.0"})
+            with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                bruto = resposta.read(700000)
+            total_bytes += len(bruto)
+            dados = json.loads(bruto.decode("utf-8", errors="ignore"))
+            for item in dados.get("items", [])[:5]:
+                titulo = item.get("title", "Pergunta do Stack Overflow")
+                link = item.get("link", "")
+                html = item.get("body", "")
+                extrator = ExtratorTexto()
+                extrator.feed(html)
+                texto = " ".join(extrator.partes).strip()
+                if titulo and texto:
+                    novos.append({
+                        "fonte": "Stack Overflow",
+                        "titulo": titulo,
+                        "arquivo": link,
+                        "consulta": consulta,
+                        "trecho": (titulo + ". " + texto)[:1800]
+                    })
+            print("Stack Overflow: resultados recebidos.")
+        except Exception as erro:
+            print("Stack Overflow indisponível nesta pesquisa:", str(erro)[:120])
+
+        # Wikipédia em português: artigos relacionados ao assunto.
+        try:
+            url = "https://pt.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
+                "action": "query", "list": "search", "srsearch": consulta,
+                "format": "json", "srlimit": 4
+            })
+            pedido = urllib.request.Request(url, headers={"User-Agent": "DexbotLocal/1.0 (projeto educacional)"})
+            with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                bruto = resposta.read(400000)
+            total_bytes += len(bruto)
+            dados = json.loads(bruto.decode("utf-8", errors="ignore"))
+            for item in dados.get("query", {}).get("search", [])[:4]:
+                titulo = item.get("title", "")
+                resumo = re.sub(r"<[^>]+>", " ", item.get("snippet", ""))
+                link = "https://pt.wikipedia.org/wiki/" + urllib.parse.quote(titulo.replace(" ", "_"))
+                if titulo and len(resumo.strip()) > 25:
+                    novos.append({
+                        "fonte": "Wikipédia",
+                        "titulo": titulo,
+                        "arquivo": link,
+                        "consulta": consulta,
+                        "trecho": (titulo + ". " + resumo).strip()[:1800]
+                    })
+            print("Wikipédia: resultados recebidos.")
+        except Exception as erro:
+            print("Wikipédia indisponível nesta pesquisa:", str(erro)[:120])
+
+        if novos:
+            self.salvar_conhecimento(novos)
+        return novos, total_bytes
+
     def pesquisar_web(self, consulta):
         consulta = consulta.strip()
         if not consulta:
             return 0
-        url_busca = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": consulta})
-        pedido = urllib.request.Request(url_busca, headers={"User-Agent": "DexbotLocal/1.0"})
-        try:
-            with urllib.request.urlopen(pedido, timeout=15) as resposta:
-                html_busca = resposta.read(700000).decode("utf-8", errors="ignore")
-        except urllib.error.HTTPError as erro:
-            print("\nDexbot: O buscador respondeu HTTP", erro.code, ". Tentando a Wikipédia.")
-            estado = [0]
-            return self.pesquisar_wikipedia(consulta, estado)
-        except Exception as erro:
-            print("\nDexbot: Falha de conexão:", erro, ". Tentando a Wikipédia.")
-            estado = [0]
-            return self.pesquisar_wikipedia(consulta, estado)
 
-        class Links(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.links = []
-            def handle_starttag(self, tag, attrs):
-                if tag == "a":
-                    dados = dict(attrs)
-                    classe = dados.get("class", "")
-                    href = dados.get("href", "")
-                    if "result__a" in classe and href:
-                        partes = urllib.parse.urlparse(href)
-                        destino = urllib.parse.parse_qs(partes.query).get("uddg", [href])[0]
-                        destino = urllib.parse.unquote(destino)
-                        if destino.startswith("https://"):
-                            self.links.append(destino)
-
-        parser_links = Links()
-        parser_links.feed(html_busca)
-        links = list(dict.fromkeys(parser_links.links))[:5]
-        if not links:
-            print("\nDexbot: Nenhum resultado seguro foi encontrado.")
-            return 0
-
+        print("\nDEXBOT: PESQUISA EM VÁRIAS FONTES")
+        print("Fontes: DuckDuckGo, MDN, Stack Overflow e Wikipédia.")
         aprendidos = []
         total = 0
-        for indice, link in enumerate(links, 1):
-            if not endereco_publico(link):
-                continue
-            try:
-                pedido = urllib.request.Request(link, headers={"User-Agent": "DexbotLocal/1.0"})
-                with urllib.request.urlopen(pedido, timeout=15) as resposta:
-                    tipo = resposta.headers.get("Content-Type", "").lower()
-                    if "text/html" not in tipo and "text/plain" not in tipo:
-                        continue
-                    bruto = resposta.read(512000)
-                total += len(bruto)
-                if "text/html" in tipo:
-                    extrator = ExtratorTexto()
-                    extrator.feed(bruto.decode("utf-8", errors="ignore"))
-                    texto = " ".join(extrator.partes)
-                else:
-                    texto = bruto.decode("utf-8", errors="ignore")
-                texto = re.sub(r"\s+", " ", texto).strip()
-                if len(texto) < 100:
+
+        # Primeiro, pesquisa em um buscador geral e tenta ler algumas páginas públicas.
+        url_busca = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": consulta})
+        try:
+            pedido = urllib.request.Request(url_busca, headers={"User-Agent": "Mozilla/5.0 DexbotLocal/1.0"})
+            with urllib.request.urlopen(pedido, timeout=15) as resposta:
+                html_busca = resposta.read(700000).decode("utf-8", errors="ignore")
+
+            class Links(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.links = []
+                    self.titulo_atual = ""
+                    self.capturar_titulo = False
+                def handle_starttag(self, tag, attrs):
+                    if tag == "a":
+                        dados = dict(attrs)
+                        href = dados.get("href", "")
+                        classe = dados.get("class", "")
+                        if "result__a" in classe and href:
+                            partes = urllib.parse.urlparse(href)
+                            destino = urllib.parse.parse_qs(partes.query).get("uddg", [href])[0]
+                            destino = urllib.parse.unquote(destino)
+                            if destino.startswith("https://"):
+                                self.links.append((destino, "Resultado DuckDuckGo"))
+            parser_links = Links()
+            parser_links.feed(html_busca)
+            links = list(dict.fromkeys(parser_links.links))[:4]
+
+            for indice, (link, titulo) in enumerate(links, 1):
+                if not endereco_publico(link):
                     continue
-                for inicio in range(0, min(len(texto), 9000), 1200):
-                    trecho = texto[inicio:inicio + 1200].strip()
-                    if len(trecho) >= 100:
-                        aprendidos.append({"arquivo": link, "trecho": trecho})
-                self.barra_progresso(total, "Página " + str(indice) + "/5")
-            except Exception:
-                continue
+                try:
+                    pedido = urllib.request.Request(link, headers={"User-Agent": "Mozilla/5.0 DexbotLocal/1.0"})
+                    with urllib.request.urlopen(pedido, timeout=12) as resposta:
+                        tipo = resposta.headers.get("Content-Type", "").lower()
+                        if "text/html" not in tipo and "text/plain" not in tipo:
+                            continue
+                        bruto = resposta.read(350000)
+                    total += len(bruto)
+                    if "text/html" in tipo:
+                        extrator = ExtratorTexto()
+                        extrator.feed(bruto.decode("utf-8", errors="ignore"))
+                        texto = " ".join(extrator.partes)
+                    else:
+                        texto = bruto.decode("utf-8", errors="ignore")
+                    texto = re.sub(r"\s+", " ", texto).strip()
+                    if len(texto) >= 100:
+                        for inicio in range(0, min(len(texto), 6000), 1200):
+                            trecho = texto[inicio:inicio + 1200].strip()
+                            if len(trecho) >= 100:
+                                aprendidos.append({
+                                    "fonte": "Web (DuckDuckGo)",
+                                    "titulo": titulo,
+                                    "arquivo": link,
+                                    "consulta": consulta,
+                                    "trecho": trecho
+                                })
+                    self.barra_progresso(total, "Página " + str(indice) + "/4")
+                except Exception:
+                    continue
+        except Exception as erro:
+            print("DuckDuckGo não respondeu:", str(erro)[:140])
 
         if aprendidos:
-            antigos = []
-            if os.path.exists(BASE_CONHECIMENTO):
-                try:
-                    with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
-                        antigos = json.load(arquivo)
-                except (OSError, json.JSONDecodeError):
-                    antigos = []
             self.salvar_conhecimento(aprendidos)
-        print()
-        print("Dexbot: Pesquisa concluída. Trechos guardados:", len(aprendidos))
+
+        # APIs independentes funcionam mesmo se o buscador geral bloquear a requisição.
+        api_docs, bytes_api = self.pesquisar_api_multiplas_fontes(consulta)
+        total += bytes_api
+        print("\nDexbot: pesquisa concluída.")
+        print("Novos trechos encontrados nesta rodada:", len(aprendidos) + len(api_docs))
+        print("Dados recebidos nesta rodada:", format(total / 1024, ".1f"), "KB.")
         return total
 
     def modo_treinamento_web(self):
@@ -779,7 +878,8 @@ class Dexbot:
                 print("\nCOMANDOS")
                 print("/ensinar  - adicionar pergunta e resposta")
                 print("/treinar  - treinar novamente a rede neural")
-                print("/memoria  - mostrar quantidade de exemplos")
+                print("/memoria  - mostrar dados e fontes armazenados")
+                print("/fontes   - listar as fontes salvas na memória")
                 print("/limparconversa - apagar o histórico de conversa")
                 print("/pesquisar - estudar arquivos de uma pasta escolhida")
                 print("/treinarweb - iniciar pesquisa contínua na internet")
@@ -791,7 +891,34 @@ class Dexbot:
             elif comando == "/treinar":
                 self.treinar()
             elif comando == "/memoria":
-                print("Dexbot: Tenho", len(self.exemplos), "exemplos de treinamento e", len(self.historico), "mensagens recentes salvas.")
+                total_docs = 0
+                total_fontes = {}
+                try:
+                    with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
+                        base = json.load(arquivo)
+                    total_docs = len(base)
+                    for doc in base:
+                        nome_fonte = doc.get("fonte", "Importação antiga")
+                        total_fontes[nome_fonte] = total_fontes.get(nome_fonte, 0) + 1
+                except (OSError, json.JSONDecodeError):
+                    pass
+                print("Dexbot: Tenho", len(self.exemplos), "exemplos,", len(self.historico), "mensagens recentes e", total_docs, "trechos de conhecimento salvos.")
+                for nome_fonte, quantidade in sorted(total_fontes.items()):
+                    print(" -", nome_fonte + ":", quantidade, "trechos")
+            elif comando == "/fontes":
+                try:
+                    with open(BASE_CONHECIMENTO, "r", encoding="utf-8") as arquivo:
+                        base = json.load(arquivo)
+                    contagem = {}
+                    for doc in base:
+                        nome_fonte = doc.get("fonte", "Importação antiga")
+                        contagem[nome_fonte] = contagem.get(nome_fonte, 0) + 1
+                    print("Fontes armazenadas:")
+                    for nome_fonte, quantidade in sorted(contagem.items()):
+                        print(" -", nome_fonte + ":", quantidade)
+                    print("Total:", len(base), "trechos.")
+                except (OSError, json.JSONDecodeError):
+                    print("Ainda não existe uma base de conhecimento válida.")
             elif comando == "/limparconversa":
                 self.historico = []
                 self.salvar_historico()
