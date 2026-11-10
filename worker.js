@@ -1,19 +1,18 @@
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const isChat = url.pathname === "/api/chat";
+    const isStatus = url.pathname === "/api/status";
 
-    if (url.pathname === "/api/chat" || url.pathname === "/api/status") {
+    if (isChat || isStatus) {
       if (!env.DEXBOT_ORIGIN || !env.DEXBOT_TOKEN) {
-        return Response.json({
-          error: "O Worker ainda não foi configurado. Defina DEXBOT_ORIGIN e DEXBOT_TOKEN."
-        }, { status: 503, headers: { "Cache-Control": "no-store" } });
+        return Response.json(
+          { error: "Servidor ainda não configurado: faltam DEXBOT_ORIGIN e DEXBOT_TOKEN." },
+          { status: 503, headers: { "Cache-Control": "no-store" } }
+        );
       }
-
-      if (url.pathname === "/api/chat" && request.method !== "POST") {
-        return Response.json({ error: "Método não permitido" }, { status: 405 });
-      }
-      if (url.pathname === "/api/status" && request.method !== "GET") {
-        return Response.json({ error: "Método não permitido" }, { status: 405 });
+      if ((isChat && request.method !== "POST") || (isStatus && request.method !== "GET")) {
+        return Response.json({ error: "Método não permitido." }, { status: 405 });
       }
 
       let origin;
@@ -24,36 +23,45 @@ export default {
         return Response.json({ error: "DEXBOT_ORIGIN precisa ser uma URL HTTPS válida." }, { status: 500 });
       }
 
-      const upstreamUrl = new URL(url.pathname, origin);
+      const target = new URL(url.pathname, origin);
       const headers = new Headers({
         "Authorization": "Bearer " + env.DEXBOT_TOKEN,
         "Accept": "application/json"
       });
-      if (request.method === "POST") {
+      let body;
+      if (isChat) {
         headers.set("Content-Type", "application/json");
+        body = await request.text();
+        if (body.length > 100000) {
+          return Response.json({ error: "Mensagem muito grande." }, { status: 413 });
+        }
       }
 
       try {
-        const upstream = await fetch(upstreamUrl, {
+        const upstream = await fetch(target, {
           method: request.method,
           headers,
-          body: request.method === "POST" ? await request.text() : undefined,
+          body,
           signal: AbortSignal.timeout(120000)
         });
         return new Response(upstream.body, {
           status: upstream.status,
           headers: {
-            "Content-Type": "application/json; charset=utf-8",
+            "Content-Type": upstream.headers.get("Content-Type") || "application/json; charset=utf-8",
             "Cache-Control": "no-store"
           }
         });
       } catch {
-        return Response.json({
-          error: "Não consegui alcançar o Dexbot no PC. Confira se o servidor e o túnel estão ligados."
-        }, { status: 502, headers: { "Cache-Control": "no-store" } });
+        return Response.json(
+          { error: "O túnel até o PC está offline. Inicie o Dexbot e o cloudflared." },
+          { status: 502, headers: { "Cache-Control": "no-store" } }
+        );
       }
     }
 
+    if (!env.ASSETS) {
+      return new Response("Arquivos do site não foram configurados no Worker.", { status: 500 });
+    }
     return env.ASSETS.fetch(request);
   }
 };
