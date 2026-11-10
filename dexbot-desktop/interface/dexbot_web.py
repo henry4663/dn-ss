@@ -1,17 +1,20 @@
 import json
+import sys
+import threading
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
 
 HERE = Path(__file__).resolve().parent
-OLLAMA_URL = "http://127.0.0.1:11434"
-MODEL = "qwen2.5-coder:1.5b"
-SYSTEM_PROMPT = (
-    "Você é Dexbot, uma IA local que ajuda principalmente com HTML, CSS, JavaScript e programação. "
-    "Responda em português claro. Explique de forma organizada e entregue código completo quando solicitado. "
-    "Separe corretamente HTML, CSS e JavaScript. Não invente testes que não executou."
-)
+PROJECT_DIR = HERE.parent
+sys.path.insert(0, str(PROJECT_DIR))
+
+from dexbot import Dexbot
+
+# Usa o mesmo cérebro do programa principal: prompt especializado,
+# memória local, índice de conhecimento e histórico persistente.
+print("[Dexbot Web] Carregando a lógica principal do Dexbot...")
+dexbot = Dexbot()
+dexbot_lock = threading.Lock()
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -29,13 +32,20 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/status":
             try:
-                with urlopen(OLLAMA_URL + "/api/tags", timeout=3) as response:
+                from urllib.request import urlopen
+                with urlopen("http://127.0.0.1:11434/api/tags", timeout=3) as response:
                     data = json.loads(response.read().decode("utf-8"))
                 models = [item.get("name", "") for item in data.get("models", [])]
-                ready = any(name == MODEL or name.startswith(MODEL + ":") for name in models)
-                self.send_json(200, {"ok": ready, "model": MODEL, "installed": models})
+                model = "qwen2.5-coder:1.5b"
+                ready = any(name == model or name.startswith(model + ":") for name in models)
+                self.send_json(200, {
+                    "ok": ready,
+                    "model": model,
+                    "memory_items": len(dexbot.conhecimento_cache),
+                    "examples": len(dexbot.exemplos)
+                })
             except Exception:
-                self.send_json(200, {"ok": False, "model": MODEL})
+                self.send_json(200, {"ok": False, "model": "qwen2.5-coder:1.5b"})
             return
         if self.path == "/":
             self.path = "/index.html"
@@ -55,38 +65,44 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(messages, list) or not messages or len(messages) > 30:
                 self.send_json(400, {"error": "Histórico de conversa inválido"})
                 return
-            clean = [{"role": "system", "content": SYSTEM_PROMPT}]
-            for item in messages:
-                role = item.get("role")
-                content = item.get("content")
-                if role not in ("user", "assistant") or not isinstance(content, str):
-                    continue
-                clean.append({"role": role, "content": content[:12000]})
-            body = json.dumps({
-                "model": MODEL,
-                "messages": clean,
-                "stream": False,
-                "keep_alive": "30m",
-                "options": {"temperature": 0.25, "num_ctx": 2048, "num_predict": 768, "num_thread": 8, "repeat_penalty": 1.2, "repeat_last_n": 128}
-            }).encode("utf-8")
-            request = Request(OLLAMA_URL + "/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
-            with urlopen(request, timeout=300) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            self.send_json(200, {"response": result.get("message", {}).get("content", "")})
-        except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")[:500]
-            self.send_json(502, {"error": "Ollama retornou erro: " + detail})
-        except URLError:
-            self.send_json(503, {"error": "Não consegui conectar ao Ollama. Abra o Ollama no Windows."})
+
+            # O Dexbot principal mantém seu próprio histórico em disco.
+            # Só enviamos a mensagem mais recente para evitar duplicações.
+            pergunta = None
+            for item in reversed(messages):
+                if isinstance(item, dict) and item.get("role") == "user":
+                    conteudo = item.get("content")
+                    if isinstance(conteudo, str):
+                        pergunta = conteudo.strip()
+                    break
+            if not pergunta:
+                self.send_json(400, {"error": "Escreva uma mensagem antes de enviar."})
+                return
+            if len(pergunta) > 12000:
+                self.send_json(400, {"error": "A mensagem passou do limite de 12.000 caracteres."})
+                return
+
+            # Evita duas chamadas simultâneas alterarem o mesmo histórico local.
+            with dexbot_lock:
+                resposta = dexbot.responder(pergunta)
+            if not resposta:
+                self.send_json(503, {"error": "O Dexbot não conseguiu gerar uma resposta. Confira se o Ollama está aberto."})
+                return
+            self.send_json(200, {
+                "response": resposta,
+                "memory_items": len(dexbot.conhecimento_cache)
+            })
         except Exception as error:
-            self.send_json(500, {"error": "Erro interno: " + str(error)})
+            self.send_json(500, {"error": "Erro interno: " + str(error)[:300]})
 
     def log_message(self, fmt, *args):
         print("[Dexbot Web] " + (fmt % args))
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
-    print("DEXBOT WEB iniciado!")
+    print("DEXBOT WEB iniciado com a lógica principal!")
+    print("Memória local:", len(dexbot.conhecimento_cache), "trechos")
+    print("Exemplos aprendidos:", len(dexbot.exemplos))
     print("Abra: http://127.0.0.1:8765")
     print("Somente este PC pode acessar por enquanto.")
     print("Para fechar, pressione Ctrl+C.")
