@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090812">
+<title>Dexbot — IA local</title>
+<style>
+:root{color-scheme:dark;--bg:#090812;--panel:#11101c;--panel2:#171526;--line:#29263c;--purple:#9565ff;--text:#f5f2ff;--muted:#a49dbb}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -15%,#33205b 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 Inter,Segoe UI,Arial,sans-serif;min-height:100vh}
+.app{display:grid;grid-template-columns:270px 1fr;min-height:100vh;max-width:1500px;margin:auto;padding:18px;gap:16px}
+.side,.main{background:#100f19eF;border:1px solid var(--line);border-radius:20px;min-height:calc(100vh - 36px)}
+.side{padding:20px;display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:20px;letter-spacing:.2px}.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#a77aff,#6136c8);display:grid;place-items:center;box-shadow:0 8px 30px #8755ff55;font-size:20px}
+.new{margin-top:30px;border:1px solid #5b438e;background:#211936;color:white;border-radius:12px;padding:12px;cursor:pointer;font-weight:650}.new:hover{background:#30204e}
+.side-note{margin-top:auto;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:16px}.status{display:flex;align-items:center;gap:8px;margin-top:24px;color:var(--muted);font-size:13px}.dot{width:8px;height:8px;border-radius:50%;background:#e0a342}.dot.ok{background:#47d49a;box-shadow:0 0 10px #47d49a88}
+.main{display:flex;flex-direction:column;overflow:hidden}.top{height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--line)}.top small{color:var(--muted)}.model{font-size:12px;color:#c6b4ff;border:1px solid #48376b;background:#1c1730;padding:6px 10px;border-radius:30px}
+.chat{flex:1;overflow:auto;padding:30px clamp(18px,7vw,100px);display:flex;flex-direction:column;gap:22px}.welcome{margin:auto;text-align:center;max-width:560px}.orb{width:68px;height:68px;border-radius:23px;background:linear-gradient(145deg,#a67aff,#6034c6);display:grid;place-items:center;font-size:30px;margin:0 auto 20px;box-shadow:0 12px 45px #8050ef55}.welcome h1{font-size:clamp(26px,4vw,38px);margin:0 0 8px}.welcome p{color:var(--muted);margin:0}.suggestions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:28px}.suggestions button{background:var(--panel2);border:1px solid var(--line);color:#e7e1fa;text-align:left;border-radius:13px;padding:13px;cursor:pointer}.suggestions button:hover{border-color:#7656bb}
+.msg{display:flex;gap:12px;max-width:850px;width:100%;margin:0 auto;white-space:pre-wrap;overflow-wrap:anywhere}.avatar{flex:0 0 32px;width:32px;height:32px;border-radius:11px;display:grid;place-items:center;background:#29213e;color:#d8c8ff;font-weight:800}.msg.user .avatar{background:#273149;color:#c9ddff}.bubble{padding:4px 0;min-width:0}.who{font-size:12px;color:var(--muted);margin-bottom:5px}.bubble p{margin:0}.bubble pre{white-space:pre-wrap;overflow:auto;background:#090812;border:1px solid var(--line);padding:12px;border-radius:10px}
+.composer-wrap{padding:16px clamp(16px,7vw,100px) 20px;border-top:1px solid var(--line)}.composer{display:flex;gap:10px;background:#171525;border:1px solid #39334f;border-radius:16px;padding:10px}.composer:focus-within{border-color:#8961e8;box-shadow:0 0 0 3px #8961e822}textarea{flex:1;resize:none;border:0;outline:0;background:transparent;color:var(--text);font:inherit;min-height:28px;max-height:160px;padding:7px}textarea::placeholder{color:#827b98}.send{width:42px;height:42px;border:0;border-radius:12px;background:linear-gradient(135deg,#a77aff,#7042d4);color:white;font-size:18px;cursor:pointer}.send:disabled{opacity:.45;cursor:not-allowed}.hint{text-align:center;color:#77718b;font-size:11px;margin-top:9px}
+@media(max-width:760px){.app{display:block;padding:0}.side{min-height:0;border-radius:0 0 16px 16px;padding:12px 16px;flex-direction:row;align-items:center;gap:12px}.brand{font-size:17px}.logo{width:36px;height:36px}.new{margin:0 0 0 auto;padding:9px 12px}.status,.side-note{display:none}.main{min-height:calc(100vh - 70px);border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0}.top{height:55px;padding:0 16px}.chat{padding:22px 16px}.suggestions{grid-template-columns:1fr}.composer-wrap{padding:12px 12px 16px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+ <div class="brand"><div class="logo">✦</div><span>DEXBOT</span></div>
+ <button class="new" id="newChat">＋ Nova conversa</button>
+ <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Verificando IA local…</span></div>
+ <div class="side-note">DEXBOT LOCAL · Seu PC processa as respostas.<br>Não compartilhe o endereço local publicamente.</div>
+</aside>
+<main class="main">
+ <header class="top"><div><strong>Chat</strong><br><small>Converse com sua IA</small></div><span class="model">Qwen 2.5 Coder · 1.5B</span></header>
+ <section class="chat" id="chat" aria-live="polite">
+  <div class="welcome" id="welcome"><div class="orb">✦</div><h1>Como posso ajudar?</h1><p>Sou o Dexbot. Estou rodando localmente no seu computador.</p>
+   <div class="suggestions"><button>Crie uma página HTML simples</button><button>Explique uma função JavaScript</button><button>Me ajude com CSS</button><button>Encontre um erro no meu código</button></div>
+  </div>
+ </section>
+ <form class="composer-wrap" id="form"><div class="composer"><textarea id="prompt" rows="1" placeholder="Pergunte alguma coisa ao Dexbot…" autocomplete="off"></textarea><button class="send" id="send" aria-label="Enviar">➤</button></div><div class="hint">Enter para enviar · Shift + Enter para quebrar linha</div></form>
+</main>
+</div>
+<script>
+const chat=document.querySelector('#chat'),form=document.querySelector('#form'),promptBox=document.querySelector('#prompt'),send=document.querySelector('#send');
+let messages=[];
+function addMessage(role,text){document.querySelector('#welcome')?.remove();const row=document.createElement('article');row.className='msg '+role;const avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?'V':'✦';const body=document.createElement('div');body.className='bubble';const who=document.createElement('div');who.className='who';who.textContent=role==='user'?'Você':'Dexbot';const p=document.createElement('p');p.textContent=text;body.append(who,p);row.append(avatar,body);chat.append(row);chat.scrollTop=chat.scrollHeight;return p}
+async function checkStatus(){try{const r=await fetch('/api/status');const d=await r.json();document.querySelector('#statusDot').classList.toggle('ok',!!d.ok);document.querySelector('#statusText').textContent=d.ok?'IA local conectada':'Ollama não está disponível'}catch{document.querySelector('#statusText').textContent='Inicie a interface pelo arquivo .bat'}}
+async function sendMessage(text){if(!text.trim()||send.disabled)return;addMessage('user',text);messages.push({role:'user',content:text});promptBox.value='';promptBox.style.height='auto';send.disabled=true;const answer=addMessage('assistant','Pensando…');try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Falha ao conversar com o Ollama');answer.textContent=d.response||'Não recebi uma resposta.';messages.push({role:'assistant',content:answer.textContent})}catch(e){answer.textContent='Erro: '+e.message+'\nConfira se o Ollama está aberto e se o modelo qwen2.5-coder:1.5b está instalado.';messages.pop()}finally{send.disabled=false;promptBox.focus();chat.scrollTop=chat.scrollHeight}}
+form.addEventListener('submit',e=>{e.preventDefault();sendMessage(promptBox.value)});promptBox.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});promptBox.addEventListener('input',()=>{promptBox.style.height='auto';promptBox.style.height=Math.min(promptBox.scrollHeight,160)+'px'});document.querySelector('#newChat').addEventListener('click',()=>{messages=[];chat.innerHTML='<div class="welcome" id="welcome"><div class="orb">✦</div><h1>Nova conversa</h1><p>O que vamos criar hoje?</p></div>'});document.querySelectorAll('.suggestions button').forEach(b=>b.addEventListener('click',()=>sendMessage(b.textContent)));checkStatus();setInterval(checkStatus,15000);
+</script>
+</body></html>
